@@ -9,7 +9,7 @@ services:
     stdin_open: true
     tty: true
     ports:
-      - "5000:5000"
+      - "15555:15555"
     environment:
       - TZ=Asia/Shanghai
       - http_proxy=socks5://172.17.0.1:20170

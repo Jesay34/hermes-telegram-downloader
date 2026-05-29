@@ -55,18 +55,7 @@ logging.getLogger("pyrogram").setLevel(logging.WARNING)
 
 
 def _check_download_finish(media_size: int, download_path: str, ui_file_name: str):
-    """Check download task if finish
-
-    Parameters
-    ----------
-    media_size: int
-        The size of the downloaded resource
-    download_path: str
-        Resource download hold path
-    ui_file_name: str
-        Really show file name
-
-    """
+    """Check download task if finish"""
     download_size = os.path.getsize(download_path)
     if media_size == download_size:
         logger.success(f"{_t('Successfully downloaded')} - {ui_file_name}")
@@ -81,60 +70,21 @@ def _check_download_finish(media_size: int, download_path: str, ui_file_name: st
 
 
 def _move_to_download_path(temp_download_path: str, download_path: str):
-    """Move file to download path
-
-    Parameters
-    ----------
-    temp_download_path: str
-        Temporary download path
-
-    download_path: str
-        Download path
-
-    """
-
+    """Move file to download path"""
     directory, _ = os.path.split(download_path)
     os.makedirs(directory, exist_ok=True)
     shutil.move(temp_download_path, download_path)
 
 
 def _check_timeout(retry: int, _: int):
-    """Check if message download timeout, then add message id into failed_ids
-
-    Parameters
-    ----------
-    retry: int
-        Retry download message times
-
-    message_id: int
-        Try to download message 's id
-
-    """
+    """Check if message download timeout"""
     if retry == 2:
         return True
     return False
 
 
 def _can_download(_type: str, file_formats: dict, file_format: Optional[str]) -> bool:
-    """
-    Check if the given file format can be downloaded.
-
-    Parameters
-    ----------
-    _type: str
-        Type of media object.
-    file_formats: dict
-        Dictionary containing the list of file_formats
-        to be downloaded for `audio`, `document` & `video`
-        media types
-    file_format: str
-        Format of the current file to be downloaded.
-
-    Returns
-    -------
-    bool
-        True if the file format can be downloaded else False.
-    """
+    """Check if the given file format can be downloaded."""
     if _type in ["audio", "document", "video"]:
         allowed_formats: list = file_formats[_type]
         if not file_format in allowed_formats and allowed_formats[0] != "all":
@@ -143,23 +93,8 @@ def _can_download(_type: str, file_formats: dict, file_format: Optional[str]) ->
 
 
 def _is_exist(file_path: str) -> bool:
-    """
-    Check if a file exists and it is not a directory.
-
-    Parameters
-    ----------
-    file_path: str
-        Absolute path of the file to be checked.
-
-    Returns
-    -------
-    bool
-        True if the file exists else False.
-    """
+    """Check if a file exists and it is not a directory."""
     return not os.path.isdir(file_path) and os.path.exists(file_path)
-
-
-# pylint: disable = R0912
 
 
 async def _get_media_meta(
@@ -168,23 +103,9 @@ async def _get_media_meta(
     media_obj: Union[Audio, Document, Photo, Video, VideoNote, Voice],
     _type: str,
 ) -> Tuple[str, str, Optional[str]]:
-    """Extract file name and file id from media object.
-
-    Parameters
-    ----------
-    media_obj: Union[Audio, Document, Photo, Video, VideoNote, Voice]
-        Media object to be extracted.
-    _type: str
-        Type of media object.
-
-    Returns
-    -------
-    Tuple[str, str, Optional[str]]
-        file_name, file_format
-    """
+    """Extract file name and file id from media object."""
     if _type in ["audio", "document", "video"]:
-        # pylint: disable = C0301
-        file_format: Optional[str] = media_obj.mime_type.split("/")[-1]  # type: ignore
+        file_format: Optional[str] = media_obj.mime_type.split("/")[-1]
     else:
         file_format = None
 
@@ -200,18 +121,13 @@ async def _get_media_meta(
         datetime_dir_name = "0"
 
     if _type in ["voice", "video_note"]:
-        # pylint: disable = C0209
-        file_format = media_obj.mime_type.split("/")[-1]  # type: ignore
+        file_format = media_obj.mime_type.split("/")[-1]
         file_save_path = app.get_file_save_path(_type, dirname, datetime_dir_name)
         file_name = "{} - {}_{}.{}".format(
-            message.id,
-            _type,
-            media_obj.date.isoformat(),  # type: ignore
-            file_format,
+            message.id, _type, media_obj.date.isoformat(), file_format,
         )
         file_name = validate_title(file_name)
         temp_file_name = os.path.join(app.temp_save_path, dirname, file_name)
-
         file_name = os.path.join(file_save_path, file_name)
     else:
         file_name = getattr(media_obj, "file_name", None)
@@ -223,7 +139,6 @@ async def _get_media_meta(
                 media_obj.file_id, getattr(media_obj, "mime_type", "")
             )
         else:
-            # file_name = file_name.split(".")[0]
             _, file_name_without_suffix = os.path.split(os.path.normpath(file_name))
             file_name, file_name_suffix = os.path.splitext(file_name_without_suffix)
             if not file_name_suffix:
@@ -246,19 +161,14 @@ async def _get_media_meta(
         gen_file_name = (
             app.get_file_name(message.id, file_name, caption) + file_name_suffix
         )
-
         file_save_path = app.get_file_save_path(_type, dirname, datetime_dir_name)
-
         temp_file_name = os.path.join(app.temp_save_path, dirname, gen_file_name)
-
         file_name = os.path.join(file_save_path, gen_file_name)
+
     return truncate_filename(file_name), truncate_filename(temp_file_name), file_format
 
 
-async def add_download_task(
-    message: pyrogram.types.Message,
-    node: TaskNode,
-):
+async def add_download_task(message: pyrogram.types.Message, node: TaskNode):
     """Add Download task"""
     if message.empty:
         return False
@@ -268,84 +178,47 @@ async def add_download_task(
     return True
 
 
-async def save_msg_to_file(
-    app, chat_id: Union[int, str], message: pyrogram.types.Message
-):
+async def save_msg_to_file(app, chat_id: Union[int, str], message: pyrogram.types.Message):
     """Write message text into file"""
     dirname = validate_title(
         message.chat.title if message.chat and message.chat.title else str(chat_id)
     )
     datetime_dir_name = message.date.strftime(app.date_format) if message.date else "0"
-
     file_save_path = app.get_file_save_path("msg", dirname, datetime_dir_name)
     file_name = os.path.join(
-        app.temp_save_path,
-        file_save_path,
+        app.temp_save_path, file_save_path,
         f"{app.get_file_name(message.id, None, None)}.txt",
     )
-
     os.makedirs(os.path.dirname(file_name), exist_ok=True)
-
     if _is_exist(file_name):
         return DownloadStatus.SkipDownload, None
-
     with open(file_name, "w", encoding="utf-8") as f:
         f.write(message.text or "")
-
     return DownloadStatus.SuccessDownload, file_name
 
 
-async def download_task(
-    client: pyrogram.Client, message: pyrogram.types.Message, node: TaskNode
-):
+async def download_task(client: pyrogram.Client, message: pyrogram.types.Message, node: TaskNode):
     """Download and Forward media"""
-
     download_status, file_name = await download_media(
         client, message, app.media_types, app.file_formats, node
     )
-
     if app.enable_download_txt and message.text and not message.media:
         download_status, file_name = await save_msg_to_file(app, node.chat_id, message)
-
     if not node.bot:
         app.set_download_id(node, message.id, download_status)
-
     node.download_status[message.id] = download_status
-
     file_size = os.path.getsize(file_name) if file_name else 0
-
     await upload_telegram_chat(
-        client,
-        node.upload_user if node.upload_user else client,
-        app,
-        node,
-        message,
-        download_status,
-        file_name,
+        client, node.upload_user if node.upload_user else client,
+        app, node, message, download_status, file_name,
     )
-
-    # rclone upload
-    if (
-        not node.upload_telegram_chat_id
-        and download_status is DownloadStatus.SuccessDownload
-    ):
+    if not node.upload_telegram_chat_id and download_status is DownloadStatus.SuccessDownload:
         ui_file_name = file_name
         if app.hide_file_name:
             ui_file_name = f"****{os.path.splitext(file_name)[-1]}"
-        if await app.upload_file(
-            file_name, update_cloud_upload_stat, (node, message.id, ui_file_name)
-        ):
+        if await app.upload_file(file_name, update_cloud_upload_stat, (node, message.id, ui_file_name)):
             node.upload_success_count += 1
-
-    await report_bot_download_status(
-        node.bot,
-        node,
-        download_status,
-        file_size,
-    )
-
-
-# pylint: disable = R0915,R0914
+    await report_bot_download_status(node.bot, node, download_status, file_size)
 
 
 @record_download_status
@@ -356,40 +229,7 @@ async def download_media(
     file_formats: dict,
     node: TaskNode,
 ):
-    """
-    Download media from Telegram.
-
-    Each of the files to download are retried 3 times with a
-    delay of 5 seconds each.
-
-    Parameters
-    ----------
-    client: pyrogram.client.Client
-        Client to interact with Telegram APIs.
-    message: pyrogram.types.Message
-        Message object retrieved from telegram.
-    media_types: list
-        List of strings of media types to be downloaded.
-        Ex : `["audio", "photo"]`
-        Supported formats:
-            * audio
-            * document
-            * photo
-            * video
-            * voice
-    file_formats: dict
-        Dictionary containing the list of file_formats
-        to be downloaded for `audio`, `document` & `video`
-        media types.
-
-    Returns
-    -------
-    int
-        Current message id.
-    """
-
-    # pylint: disable = R0912
-
+    """Download media from Telegram. Each file retried 3 times with 5s delay."""
     file_name: str = ""
     ui_file_name: str = ""
     task_start_time: float = time.time()
@@ -405,24 +245,29 @@ async def download_media(
                 node.chat_id, message, _media, _type
             )
             media_size = getattr(_media, "file_size", 0)
-
             ui_file_name = file_name
             if app.hide_file_name:
                 ui_file_name = f"****{os.path.splitext(file_name)[-1]}"
 
             if _can_download(_type, file_formats, file_format):
-                if _is_exist(file_name):
-                    file_size = os.path.getsize(file_name)
-                    if file_size or file_size == media_size:
+                if _is_exist(file_name) or _is_exist(temp_file_name):
+                    actual_path = file_name if _is_exist(file_name) else temp_file_name
+                    file_size = os.path.getsize(actual_path)
+                    if media_size > 0 and file_size >= media_size * 0.95:
                         logger.info(
                             f"id={message.id} {ui_file_name} "
-                            f"{_t('already download,download skipped')}.\n"
+                            f"{_t('already download,download skipped')}."
                         )
-
                         return DownloadStatus.SkipDownload, None
+                    elif file_size > 0:
+                        os.remove(actual_path)
+                        logger.info(
+                            f"id={message.id} {ui_file_name} "
+                            f"{_t('File exists but size mismatch')}: "
+                            f"{file_size} != {media_size}, {_t('re-downloading')}."
+                        )
             else:
                 return DownloadStatus.SkipDownload, None
-
             break
     except Exception as e:
         logger.error(
@@ -435,27 +280,17 @@ async def download_media(
         return DownloadStatus.SkipDownload, None
 
     message_id = message.id
-
     for retry in range(3):
         try:
             temp_download_path = await client.download_media(
-                message,
-                file_name=temp_file_name,
+                message, file_name=temp_file_name,
                 progress=update_download_status,
-                progress_args=(
-                    message_id,
-                    ui_file_name,
-                    task_start_time,
-                    node,
-                    client,
-                ),
+                progress_args=(message_id, ui_file_name, task_start_time, node, client),
             )
-
             if temp_download_path and isinstance(temp_download_path, str):
                 _check_download_finish(media_size, temp_download_path, ui_file_name)
                 await asyncio.sleep(0.5)
                 _move_to_download_path(temp_download_path, file_name)
-                # TODO: if not exist file size or media
                 return DownloadStatus.SuccessDownload, file_name
         except pyrogram.errors.exceptions.bad_request_400.BadRequest:
             logger.warning(
@@ -464,17 +299,14 @@ async def download_media(
             await asyncio.sleep(RETRY_TIME_OUT)
             message = await fetch_message(client, message)
             if _check_timeout(retry, message.id):
-                # pylint: disable = C0301
                 logger.error(
-                    f"Message[{message.id}]: "
-                    f"{_t('file reference expired for 3 retries, download skipped.')}"
+                    f"Message[{message.id}]: {_t('file reference expired for 3 retries, download skipped.')}"
                 )
         except pyrogram.errors.exceptions.flood_420.FloodWait as wait_err:
             await asyncio.sleep(wait_err.value)
-            logger.warning("Message[{}]: FlowWait {}", message.id, wait_err.value)
+            logger.info("Message[{}]: FlowWait {}s, waiting", message.id, wait_err.value)
             _check_timeout(retry, message.id)
         except TypeError:
-            # pylint: disable = C0301
             logger.warning(
                 f"{_t('Timeout Error occurred when downloading Message')}[{message.id}], "
                 f"{_t('retrying after')} {RETRY_TIME_OUT} {_t('seconds')}"
@@ -485,14 +317,12 @@ async def download_media(
                     f"Message[{message.id}]: {_t('Timing out after 3 reties, download skipped.')}"
                 )
         except Exception as e:
-            # pylint: disable = C0301
             logger.error(
                 f"Message[{message.id}]: "
                 f"{_t('could not be downloaded due to following exception')}:\n[{e}].",
                 exc_info=True,
             )
             break
-
     return DownloadStatus.FailedDownload, None
 
 
@@ -506,16 +336,25 @@ def _check_config() -> bool:
     print_meta(logger)
     try:
         _load_config()
+
         logger.add(
             os.path.join(app.log_file_path, "tdl.log"),
             rotation="10 MB",
-            retention="10 days",
+            retention="30 days",
             level=app.log_level,
+        )
+
+        logger.add(
+            os.path.join(app.log_file_path, "download.log"),
+            rotation="10 MB",
+            retention="30 days",
+            level="SUCCESS",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}",
+            filter=lambda record: record["extra"].get("category") == "download",
         )
     except Exception as e:
         logger.exception(f"load config error: {e}")
         return False
-
     return True
 
 
@@ -526,10 +365,8 @@ async def worker(client: pyrogram.client.Client):
             item = await queue.get()
             message = item[0]
             node: TaskNode = item[1]
-
             if node.is_stop_transmission:
                 continue
-
             if node.client:
                 await download_task(node.client, message, node)
             else:
@@ -538,63 +375,38 @@ async def worker(client: pyrogram.client.Client):
             logger.exception(f"{e}")
 
 
-async def download_chat_task(
-    client: pyrogram.Client,
-    chat_download_config: ChatDownloadConfig,
-    node: TaskNode,
-):
+async def download_chat_task(client: pyrogram.Client, chat_download_config: ChatDownloadConfig, node: TaskNode):
     """Download all task"""
     messages_iter = get_chat_history_v2(
-        client,
-        node.chat_id,
-        limit=node.limit,
-        max_id=node.end_offset_id,
-        offset_id=chat_download_config.last_read_message_id,
-        reverse=True,
+        client, node.chat_id, limit=node.limit,
+        max_id=node.end_offset_id, offset_id=chat_download_config.last_read_message_id, reverse=True,
     )
-
     chat_download_config.node = node
-
     if chat_download_config.ids_to_retry:
         logger.info(f"{_t('Downloading files failed during last run')}...")
-        skipped_messages: list = await client.get_messages(  # type: ignore
+        skipped_messages: list = await client.get_messages(
             chat_id=node.chat_id, message_ids=chat_download_config.ids_to_retry
         )
-
         for message in skipped_messages:
             await add_download_task(message, node)
-
-    async for message in messages_iter:  # type: ignore
+    async for message in messages_iter:
         meta_data = MetaData()
-
         caption = message.caption
         if caption:
             caption = validate_title(caption)
             app.set_caption_name(node.chat_id, message.media_group_id, caption)
-            app.set_caption_entities(
-                node.chat_id, message.media_group_id, message.caption_entities
-            )
+            app.set_caption_entities(node.chat_id, message.media_group_id, message.caption_entities)
         else:
             caption = app.get_caption_name(node.chat_id, message.media_group_id)
         set_meta_data(meta_data, message, caption)
-
         if app.need_skip_message(chat_download_config, message.id):
             continue
-
         if app.exec_filter(chat_download_config, meta_data):
             await add_download_task(message, node)
         else:
             node.download_status[message.id] = DownloadStatus.SkipDownload
             if message.media_group_id:
-                await upload_telegram_chat(
-                    client,
-                    node.upload_user,
-                    app,
-                    node,
-                    message,
-                    DownloadStatus.SkipDownload,
-                )
-
+                await upload_telegram_chat(client, node.upload_user, app, node, message, DownloadStatus.SkipDownload)
     chat_download_config.need_check = True
     chat_download_config.total_task = node.total_task
     node.is_running = True
@@ -615,67 +427,46 @@ async def download_all_chat(client: pyrogram.Client):
 async def run_until_all_task_finish():
     """Normal download"""
     while True:
-        finish: bool = True
-        for _, value in app.chat_download_config.items():
-            if not value.need_check or value.total_task != value.finish_task:
-                finish = False
-
+        finish = all(value.need_check and value.total_task == value.finish_task for _, value in app.chat_download_config.items())
         if (not app.bot_token and finish) or app.restart_program:
             break
-
         await asyncio.sleep(1)
 
 
 def _exec_loop():
     """Exec loop"""
-
     app.loop.run_until_complete(run_until_all_task_finish())
 
 
 async def start_server(client: pyrogram.Client):
-    """
-    Start the server using the provided client.
-    """
+    """Start the server"""
     await client.start()
 
 
 async def stop_server(client: pyrogram.Client):
-    """
-    Stop the server using the provided client.
-    """
+    """Stop the server"""
     await client.stop()
 
 
 def main():
-    """Main function of the downloader."""
+    """Main function"""
     tasks = []
     client = HookClient(
-        "media_downloader",
-        api_id=app.api_id,
-        api_hash=app.api_hash,
-        proxy=app.proxy,
-        workdir=app.session_file_path,
-        start_timeout=app.start_timeout,
-        no_updates=True,
+        "media_downloader", api_id=app.api_id, api_hash=app.api_hash,
+        proxy=app.proxy, workdir=app.session_file_path,
+        start_timeout=app.start_timeout, no_updates=True,
     )
     try:
         app.pre_run()
         init_web(app)
-
         set_max_concurrent_transmissions(client, app.max_concurrent_transmissions)
-
         app.loop.run_until_complete(start_server(client))
         logger.success(_t("Successfully started (Press Ctrl+C to stop)"))
-
         app.loop.create_task(download_all_chat(client))
         for _ in range(app.max_download_task):
-            task = app.loop.create_task(worker(client))
-            tasks.append(task)
-
+            tasks.append(app.loop.create_task(worker(client)))
         if app.bot_token:
-            app.loop.run_until_complete(
-                start_download_bot(app, client, add_download_task, download_chat_task)
-            )
+            app.loop.run_until_complete(start_download_bot(app, client, add_download_task, download_chat_task))
         _exec_loop()
     except KeyboardInterrupt:
         logger.info(_t("KeyboardInterrupt"))
@@ -689,14 +480,12 @@ def main():
         for task in tasks:
             task.cancel()
         logger.info(_t("Stopped!"))
-        # check_for_updates(app.proxy)
         logger.info(f"{_t('update config')}......")
         app.update_config()
         logger.success(
             f"{_t('Updated last read message_id to config file')},"
             f"{_t('total download')} {app.total_download_task}, "
-            f"{_t('total upload file')} "
-            f"{app.cloud_drive_config.total_upload_success_file_count}"
+            f"{_t('total upload file')} {app.cloud_drive_config.total_upload_success_file_count}"
         )
 
 

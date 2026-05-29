@@ -396,7 +396,7 @@ class Application:
         self.caption_entities_dict: dict = {}
         self.max_concurrent_transmissions: int = 1
         self.web_host: str = "0.0.0.0"
-        self.web_port: int = 5000
+        self.web_port: int = 15555
         self.max_download_task: int = 5
         self.language = Language.EN
         self.after_upload_telegram_delete: bool = True
