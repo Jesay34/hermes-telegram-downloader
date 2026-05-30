@@ -16,6 +16,7 @@ from module.download_stat import (
     get_download_state,
     get_failed_downloads,
     get_total_download_speed,
+    is_task_paused,
     pause_task,
     remove_failed_download,
     resume_task,
@@ -130,7 +131,13 @@ def get_download_list():
             if not task_id:
                 task_id = f"{chat_id}_{idx}"
 
-            status = "completed" if is_already_down else "active"
+            # Determine status: completed, paused, or active
+            if is_already_down:
+                status = "completed"
+            elif is_task_paused(task_id):
+                status = "paused"
+            else:
+                status = "active"
 
             result += (
                 '{ "task_id":"'

@@ -122,6 +122,32 @@ def clear_completed_downloads():
             del _download_result[chat_id]
 
 
+def _reset_task_speed(task_id):
+    """Reset download speed for a specific task to 0"""
+    global _total_download_speed
+    for chat_id, messages in _download_result.items():
+        for msg_id, value in messages.items():
+            if str(value.get("task_id", "")) == str(task_id):
+                value["download_speed"] = 0
+    # Recalculate total speed from remaining active tasks
+    total = 0
+    for chat_id, messages in _download_result.items():
+        for msg_id, value in messages.items():
+            if not is_task_paused(value.get("task_id", "")):
+                total += value.get("download_speed", 0)
+    _total_download_speed = total
+
+
+def _check_and_reset_global_speed():
+    """Reset global speed if no active (non-paused) tasks are downloading"""
+    global _total_download_speed
+    for chat_id, messages in _download_result.items():
+        for msg_id, value in messages.items():
+            if not is_task_paused(value.get("task_id", "")):
+                return  # There are active tasks, don't reset
+    _total_download_speed = 0
+
+
 async def update_download_status(
     down_byte: int,
     total_size: int,
@@ -147,6 +173,9 @@ async def update_download_status(
     while is_task_paused(node.task_id):
         if node.is_stop_transmission:
             client.stop_transmission()
+        # Reset this task's speed to 0 while paused
+        _reset_task_speed(node.task_id)
+        _check_and_reset_global_speed()
         await asyncio.sleep(1)
 
     while get_download_state() == DownloadState.StopDownload:
