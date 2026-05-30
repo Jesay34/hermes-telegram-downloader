@@ -1,15 +1,15 @@
 version: "3.8"
 
 services:
-  telegram_media_downloader:
+  hermes-telegram-downloader:
     build: .
     image: mangoisillegal/telegram_media_downloader:latest
-    container_name: telegram_media_downloader
+    container_name: hermes-telegram-downloader
     network_mode: bridge
     stdin_open: true
     tty: true
     ports:
-      - "15555:15555"
+      - "5000:5000"
     environment:
       - TZ=Asia/Shanghai
       - http_proxy=socks5://172.17.0.1:20170
@@ -26,4 +26,8 @@ services:
       - "./sessions:/app/sessions"
       # 临时文件
       - "./temp:/app/temp"
+      # 模块文件覆盖（修复暂停恢复按钮 + 速度归零）
+      - "./module/download_stat.py:/app/module/download_stat.py"
+      - "./module/web.py:/app/module/web.py"
+      - "./module/templates/index.html:/app/module/templates/index.html"
     restart: unless-stopped
