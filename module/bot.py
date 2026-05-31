@@ -112,6 +112,8 @@ class DownloadBot:
 
             for key, value in self.task_node.copy().items():
                 if value.is_running and value.is_finish():
+                    # Send final status update before completing
+                    await report_bot_status(self.bot, value, immediate_reply=True)
                     complete_task(value.task_id)
                     self.remove_task_node(key)
             await asyncio.sleep(3)
@@ -148,7 +150,6 @@ class DownloadBot:
 
                     # For forward tasks, set upload_telegram_chat_id
                     dst_chat_id = extra_data.get("dst_chat_id", 0) if extra_data else 0
-                    saved_display_id = extra_data.get("task_id_display", "") if extra_data else ""
 
                     node = TaskNode(
                         chat_id=chat_id,
@@ -160,7 +161,6 @@ class DownloadBot:
                         bot=self.bot,
                         task_id=task_id,
                         upload_telegram_chat_id=dst_chat_id,
-                        task_id_display=saved_display_id,
                     )
                     self.add_task_node(node)
 
