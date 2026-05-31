@@ -147,11 +147,6 @@ def get_download_list():
                 else:
                     eta = f"{eta_seconds}s"
 
-            # Display task_id: date prefix + incremental id
-            _date_tag = datetime.datetime.fromtimestamp(
-                value.get("end_time", 0) or value.get("start_time", 0) or 0
-            ).strftime("%m%d") if (value.get("end_time") or value.get("start_time")) else ""
-            task_id_display = f"{_date_tag}-{idx}" if _date_tag else str(idx)
             # Internal key for operations (stable across restarts)
             task_id = f"{chat_id}_{idx}"
 
@@ -174,7 +169,6 @@ def get_download_list():
 
             result.append({
                 "task_id": str(task_id),
-                "task_id_display": task_id_display,
                 "chat": str(chat_id),
                 "chat_title": chat_title,
                 "id": str(idx),
@@ -196,6 +190,11 @@ def get_download_list():
         result.sort(key=lambda x: x.get("end_time", 0), reverse=True)
     else:
         result.sort(key=lambda x: int(x.get("id", "0")), reverse=True)
+
+    # Sequential display id with date prefix (resets on restart)
+    today_tag = datetime.datetime.now().strftime("%m%d")
+    for i, item in enumerate(result, 1):
+        item["task_id_display"] = f"{today_tag}-{i}"
 
     return jsonify(result)
 
