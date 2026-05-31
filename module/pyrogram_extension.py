@@ -1047,6 +1047,9 @@ async def report_bot_forward_status(
     await report_bot_status(client, node)
 
 
+_report_lock = asyncio.Lock()
+
+
 async def report_bot_status(
     client: pyrogram.Client,
     node: TaskNode,
@@ -1054,7 +1057,8 @@ async def report_bot_status(
 ):
     """see _report_bot_status"""
     try:
-        return await _report_bot_status(client, node, immediate_reply)
+        async with _report_lock:
+            return await _report_bot_status(client, node, immediate_reply)
     except pyrogram.errors.exceptions.flood_420.FloodWait as e:
         wait_seconds = e.value
         wait_minutes = wait_seconds / 60
@@ -1063,9 +1067,8 @@ async def report_bot_status(
             wait_minutes,
             wait_seconds,
         )
-        # Update last_reply_time to prevent immediate retry after wait
-        node.last_reply_time = time.time() + wait_seconds
-        await asyncio.sleep(wait_seconds)
+        # Non-blocking: just set cooldown, don't sleep
+        node.flood_wait_until = time.time() + wait_seconds
     except Exception as e:
         logger.debug(f"{e}")
 

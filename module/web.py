@@ -1,5 +1,6 @@
 """web ui for media download"""
 
+import datetime
 import logging
 import os
 import threading
@@ -133,21 +134,38 @@ def get_download_list():
             progress = round(value["down_byte"] / value["total_size"] * 100, 1)
             download_speed = format_byte(value["download_speed"]) + "/s"
 
-            # Generate task_id as chat_id_message_id or from node's task_id
-            task_id = value.get("task_id", "")
-            if not task_id:
-                task_id = f"{chat_id}_{idx}"
+            # ETA calculation
+            eta = ""
+            speed = value["download_speed"]
+            if speed > 0 and not is_already_down:
+                remaining = value["total_size"] - value["down_byte"]
+                eta_seconds = int(remaining / speed)
+                if eta_seconds >= 3600:
+                    eta = f"{eta_seconds // 3600}h{(eta_seconds % 3600) // 60:02d}m"
+                elif eta_seconds >= 60:
+                    eta = f"{eta_seconds // 60}m{eta_seconds % 60:02d}s"
+                else:
+                    eta = f"{eta_seconds}s"
+
+            # Stable task_id: chat_id + message_id (survives restarts)
+            task_id = f"{chat_id}_{idx}"
 
             # Determine status: completed, paused, or active
             if is_already_down:
                 status = "completed"
-            elif is_task_paused(task_id):
+            elif is_task_paused(task_id) or is_task_paused(value.get("task_id", "")):
                 status = "paused"
             else:
                 status = "active"
 
             # Get chat title from cache
             chat_title = get_chat_title(chat_id)
+
+            # Format completion time
+            end_time = value.get("end_time", 0)
+            completed_time = ""
+            if end_time and is_already_down:
+                completed_time = datetime.datetime.fromtimestamp(end_time).strftime("%m-%d %H:%M:%S")
 
             result.append({
                 "task_id": str(task_id),
@@ -160,9 +178,18 @@ def get_download_list():
                 "download_progress": str(progress),
                 "download_progress_raw": progress,
                 "download_speed": download_speed,
+                "eta": eta,
                 "save_path": value["file_name"].replace("\\", "/"),
                 "status": status,
+                "end_time": end_time,
+                "completed_time": completed_time,
             })
+
+    # Sort: completed by end_time desc (newest first), active by id desc
+    if already_down:
+        result.sort(key=lambda x: x.get("end_time", 0), reverse=True)
+    else:
+        result.sort(key=lambda x: int(x.get("id", "0")), reverse=True)
 
     return jsonify(result)
 
@@ -175,6 +202,10 @@ def web_get_failed_downloads():
     for f in failed:
         chat_id = f.get("chat_id", "")
         chat_title = get_chat_title(chat_id)
+        failed_time = ""
+        ts = f.get("timestamp", 0)
+        if ts:
+            failed_time = datetime.datetime.fromtimestamp(ts).strftime("%m-%d %H:%M:%S")
         result.append({
             "task_id": str(f["task_id"]),
             "chat": str(chat_id),
@@ -183,6 +214,7 @@ def web_get_failed_downloads():
             "filename": os.path.basename(f.get("file_name", "")),
             "error_message": f.get("error_message", "Unknown error"),
             "total_size": format_byte(f.get("total_size", 0)),
+            "failed_time": failed_time,
         })
     return jsonify(result)
 

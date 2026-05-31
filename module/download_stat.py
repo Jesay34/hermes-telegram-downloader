@@ -71,11 +71,14 @@ def resume_task(task_id) -> bool:
 
 
 def delete_task(task_id) -> bool:
-    """Delete a specific task from download results by task_id"""
+    """Delete a specific task from download results by task_id.
+    Supports both old numeric task_id and new chat_id_msg_id format."""
     task_id_str = str(task_id)
     for chat_id, messages in list(_download_result.items()):
         for msg_id, value in list(messages.items()):
-            if str(value.get("task_id", "")) == task_id_str:
+            # Match by composite key (chat_id_msg_id) or old task_id
+            composite_key = f"{chat_id}_{msg_id}"
+            if composite_key == task_id_str or str(value.get("task_id", "")) == task_id_str:
                 del _download_result[chat_id][msg_id]
                 if not _download_result[chat_id]:
                     del _download_result[chat_id]
@@ -162,17 +165,20 @@ def clear_completed_downloads():
 
 
 def _reset_task_speed(task_id):
-    """Reset download speed for a specific task to 0"""
+    """Reset download speed for a specific task to 0.
+    Supports both composite key (chat_id_msg_id) and numeric task_id."""
     global _total_download_speed
     for chat_id, messages in _download_result.items():
         for msg_id, value in messages.items():
-            if str(value.get("task_id", "")) == str(task_id):
+            composite_key = f"{chat_id}_{msg_id}"
+            if composite_key == str(task_id) or str(value.get("task_id", "")) == str(task_id):
                 value["download_speed"] = 0
     # Recalculate total speed from remaining active tasks
     total = 0
     for chat_id, messages in _download_result.items():
         for msg_id, value in messages.items():
-            if not is_task_paused(value.get("task_id", "")):
+            composite_key = f"{chat_id}_{msg_id}"
+            if not (is_task_paused(composite_key) or is_task_paused(value.get("task_id", ""))):
                 total += value.get("download_speed", 0)
     _total_download_speed = total
 
@@ -182,7 +188,8 @@ def _check_and_reset_global_speed():
     global _total_download_speed
     for chat_id, messages in _download_result.items():
         for msg_id, value in messages.items():
-            if not is_task_paused(value.get("task_id", "")):
+            composite_key = f"{chat_id}_{msg_id}"
+            if not (is_task_paused(composite_key) or is_task_paused(value.get("task_id", ""))):
                 return  # There are active tasks, don't reset
     _total_download_speed = 0
 
@@ -208,12 +215,13 @@ async def update_download_status(
 
     chat_id = node.chat_id
 
-    # Check if this individual task is paused
-    while is_task_paused(node.task_id):
+    # Check if this individual task is paused (by composite key or task_id)
+    composite_key = f"{chat_id}_{message_id}"
+    while is_task_paused(composite_key) or is_task_paused(node.task_id):
         if node.is_stop_transmission:
             client.stop_transmission()
         # Reset this task's speed to 0 while paused
-        _reset_task_speed(node.task_id)
+        _reset_task_speed(composite_key)
         _check_and_reset_global_speed()
         await asyncio.sleep(1)
 

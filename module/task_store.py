@@ -35,7 +35,8 @@ def _save_all(tasks: list):
 
 
 def save_task(task_id, chat_id, url, start_offset_id, end_offset_id,
-              limit, download_filter, from_user_id, task_type="download"):
+              limit, download_filter, from_user_id, task_type="download",
+              extra_data=None):
     """Save a new bot task to the store."""
     with _lock:
         tasks = _load_all()
@@ -51,12 +52,13 @@ def save_task(task_id, chat_id, url, start_offset_id, end_offset_id,
             "download_filter": download_filter,
             "from_user_id": from_user_id,
             "task_type": task_type,
+            "extra_data": extra_data or {},
             "status": "running",
             "last_message_id": start_offset_id,
             "created_at": time.time(),
         })
         _save_all(tasks)
-        logger.info(f"Saved bot task {task_id} to persistence store")
+        logger.info(f"Saved bot task {task_id} ({task_type}) to persistence store")
 
 
 def update_task_progress(task_id, last_message_id):

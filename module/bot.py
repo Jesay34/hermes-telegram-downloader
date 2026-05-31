@@ -28,7 +28,7 @@ from module.download_stat import (
     set_chat_title,
 )
 from module.filter import Filter
-from module.task_store import save_task, complete_task, get_running_tasks
+from module.task_store import save_task, complete_task, get_running_tasks, update_task_progress
 from module.get_chat_history_v2 import get_chat_history_v2
 from module.language import Language, _t
 from module.pyrogram_extension import (
@@ -134,6 +134,8 @@ class DownloadBot:
                     limit = task_data.get("limit", 0)
                     download_filter = task_data.get("download_filter")
                     from_user_id = task_data.get("from_user_id")
+                    task_type = task_data.get("task_type", "download")
+                    extra_data = task_data.get("extra_data", {})
 
                     # Recalculate limit from the new start
                     if end_offset_id and start_offset_id:
@@ -142,6 +144,9 @@ class DownloadBot:
                     chat_download_config = ChatDownloadConfig()
                     chat_download_config.last_read_message_id = start_offset_id
                     chat_download_config.download_filter = download_filter
+
+                    # For forward tasks, set upload_telegram_chat_id
+                    dst_chat_id = extra_data.get("dst_chat_id", 0) if extra_data else 0
 
                     node = TaskNode(
                         chat_id=chat_id,
@@ -152,32 +157,64 @@ class DownloadBot:
                         end_offset_id=end_offset_id,
                         bot=self.bot,
                         task_id=task_id,
+                        upload_telegram_chat_id=dst_chat_id,
                     )
                     self.add_task_node(node)
 
                     # Notify user
                     if from_user_id and self.bot:
                         try:
-                            chat_title = task_data.get("chat_id", "")
                             from module.download_stat import get_chat_title
-                            chat_title = get_chat_title(chat_id)
+                            chat_title = get_chat_title(chat_id) or str(chat_id)
+                            type_label = "转发" if task_type == "forward" else "下载"
                             await self.bot.send_message(
                                 from_user_id,
                                 f"🔄 恢复未完成任务 #{task_id}\n"
                                 f"群组: {chat_title}\n"
-                                f"从消息 {start_offset_id} 继续下载",
+                                f"类型: {type_label}\n"
+                                f"从消息 {start_offset_id} 继续",
                             )
                         except Exception as e:
                             logger.warning(f"Failed to send recovery notification: {e}")
 
-                    self.app.loop.create_task(
-                        self.download_chat_task(self.client, chat_download_config, node)
-                    )
-                    logger.info(f"Recovered task {task_id} for chat {chat_id}")
+                    if task_type == "forward" and dst_chat_id:
+                        # Recover forward task
+                        self.app.loop.create_task(
+                            self._recover_forward_task(task_data, node, start_offset_id)
+                        )
+                    else:
+                        # Recover download task
+                        self.app.loop.create_task(
+                            self.download_chat_task(self.client, chat_download_config, node)
+                        )
+                    logger.info(f"Recovered {task_type} task {task_id} for chat {chat_id}")
                 except Exception as e:
                     logger.warning(f"Failed to recover task {task_data.get('task_id')}: {e}")
         except Exception as e:
             logger.warning(f"Task recovery failed: {e}")
+
+    async def _recover_forward_task(self, task_data, node, offset_id):
+        """Recover a forward task from last checkpoint."""
+        from module.pyrogram_extension import report_bot_status
+        try:
+            async for item in get_chat_history_v2(
+                self.client, node.chat_id,
+                limit=node.limit, max_id=node.end_offset_id,
+                offset_id=offset_id, reverse=True,
+            ):
+                if not node.has_protected_content:
+                    await forward_normal_content(self.client, node, item)
+                else:
+                    await self.add_download_task(item, node)
+                update_task_progress(node.task_id, item.id)
+                if node.is_stop_transmission:
+                    break
+        except Exception as e:
+            logger.warning(f"Forward recovery failed for task {node.task_id}: {e}")
+        finally:
+            await report_bot_status(self.bot, node, immediate_reply=True)
+            node.stop_transmission()
+            complete_task(node.task_id)
 
     def assign_config(self, _config: dict):
         """assign config from str.
@@ -1257,6 +1294,20 @@ async def forward_message_impl(
     if not node:
         return
 
+    # Persist forward task for crash recovery
+    save_task(
+        task_id=node.task_id,
+        chat_id=node.chat_id,
+        url=src_chat_link,
+        start_offset_id=offset_id,
+        end_offset_id=end_offset_id,
+        limit=node.limit,
+        download_filter=download_filter,
+        from_user_id=message.from_user.id,
+        task_type="forward",
+        extra_data={"dst_chat_id": dst_chat_id, "dst_chat_link": dst_chat_link},
+    )
+
     if not node.has_protected_content:
         try:
             async for item in get_chat_history_v2(  # type: ignore
@@ -1268,6 +1319,8 @@ async def forward_message_impl(
                 reverse=True,
             ):
                 await forward_normal_content(client, node, item)
+                # Update progress for crash recovery
+                update_task_progress(node.task_id, item.id)
                 if node.is_stop_transmission:
                     await client.edit_message_text(
                         message.from_user.id,
@@ -1284,8 +1337,10 @@ async def forward_message_impl(
         finally:
             await report_bot_status(client, node, immediate_reply=True)
             node.stop_transmission()
+            complete_task(node.task_id)
     else:
         await forward_msg(node, offset_id)
+        complete_task(node.task_id)
 
 
 async def forward_messages(client: pyrogram.Client, message: pyrogram.types.Message):

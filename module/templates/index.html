@@ -203,6 +203,12 @@
                                     <span class="font-mono font-medium"
                                           :class="task.status === 'paused' ? 'text-amber-600' : 'text-blue-600'"
                                           x-text="task.download_speed"></span>
+                                    <template x-if="task.eta">
+                                        <span>
+                                            <span class="text-gray-300">|</span>
+                                            <span class="text-gray-400" x-text="'剩余 ' + task.eta"></span>
+                                        </span>
+                                    </template>
                                 </div>
                             </div>
 
@@ -313,6 +319,12 @@
                                 <h4 class="text-sm font-medium text-gray-900 truncate" :title="task.filename" x-text="task.filename"></h4>
                                 <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
                                     <span x-text="task.total_size"></span>
+                                    <template x-if="task.completed_time">
+                                        <span>
+                                            <span class="text-gray-300">|</span>
+                                            <span class="text-gray-400" x-text="'完成于 ' + task.completed_time"></span>
+                                        </span>
+                                    </template>
                                 </div>
                                 <div class="mt-1.5 text-xs text-gray-400 truncate" :title="task.save_path">
                                     <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -399,6 +411,12 @@
                                 <h4 class="text-sm font-medium text-gray-900 truncate" :title="task.filename" x-text="task.filename"></h4>
                                 <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
                                     <span x-text="task.total_size"></span>
+                                    <template x-if="task.failed_time">
+                                        <span>
+                                            <span class="text-gray-300">|</span>
+                                            <span class="text-gray-400" x-text="'失败于 ' + task.failed_time"></span>
+                                        </span>
+                                    </template>
                                 </div>
                                 <!-- Error Message -->
                                 <div class="mt-2 flex items-start gap-1.5 p-2 bg-red-50 rounded-lg border border-red-100">
@@ -468,11 +486,16 @@
             async init() {
                 await this.fetchVersion();
                 await this.fetchDownloadState();
-                await this.fetchAll();
+                await this.fetchActive();
+                await this.fetchCompleted();
                 this.pollTimer = setInterval(() => {
                     this.fetchDownloadStatus();
-                    this.fetchAll();
+                    this.fetchActive();
                 }, 1500);
+                // Completed list refreshes less frequently
+                this.completedPollTimer = setInterval(() => {
+                    this.fetchCompleted();
+                }, 10000);
             },
 
             async fetchVersion() {
@@ -500,21 +523,27 @@
                 } catch(e) {}
             },
 
-            async fetchAll() {
+            async fetchActive() {
                 try {
-                    const activeRes = await fetch('/get_download_list?already_down=false');
-                    const activeData = await activeRes.json();
-                    const completedRes = await fetch('/get_download_list?already_down=true');
-                    const completedData = await completedRes.json();
+                    const res = await fetch('/get_download_list?already_down=false');
+                    const data = await res.json();
+                    this.activeTasks = data.filter(t => t.download_progress_raw < 100);
+                } catch(e) {}
+            },
+
+            async fetchCompleted() {
+                try {
+                    const res = await fetch('/get_download_list?already_down=true');
+                    const data = await res.json();
+                    const newCompleted = data.filter(t => t.download_progress_raw >= 100);
+                    // Only update if data actually changed (avoid unnecessary re-render)
+                    if (JSON.stringify(newCompleted) !== JSON.stringify(this.completedTasks)) {
+                        this.completedTasks = newCompleted;
+                    }
                     const failedRes = await fetch('/get_failed_downloads');
                     const failedData = await failedRes.json();
-
-                    this.activeTasks = activeData.filter(t => t.download_progress_raw < 100);
-                    this.completedTasks = completedData.filter(t => t.download_progress_raw >= 100);
                     this.failedTasks = failedData;
-                } catch(e) {
-                    console.error('Fetch error:', e);
-                }
+                } catch(e) {}
             },
 
             async toggleGlobalPause() {
@@ -568,7 +597,7 @@
                     if (data.code === '1') {
                         this.showToast('已删除 ' + data.deleted + ' 个任务', 'success');
                         this.selectedTasks = [];
-                        this.fetchAll();
+                        this.fetchActive(); this.fetchCompleted();
                     } else {
                         this.showToast(data.message || '删除失败', 'error');
                     }
@@ -611,7 +640,7 @@
                     const data = await res.json();
                     if (data.code === '1') {
                         this.showToast('任务已删除', 'success');
-                        this.fetchAll();
+                        this.fetchActive(); this.fetchCompleted();
                     } else {
                         this.showToast(data.message || '删除失败', 'error');
                     }
@@ -626,7 +655,7 @@
                     const data = await res.json();
                     if (data.code === '1') {
                         this.showToast('已加入重试队列', 'success');
-                        this.fetchAll();
+                        this.fetchActive(); this.fetchCompleted();
                     } else {
                         this.showToast(data.message || '重试失败', 'error');
                     }

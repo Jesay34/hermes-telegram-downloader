@@ -156,6 +156,7 @@ class TaskNode:
         self.skip_download_task = 0
         self.last_reply_time = time.time()
         self.last_edit_msg: str = ""
+        self.flood_wait_until: float = 0  # Non-blocking FLOOD_WAIT cooldown
         self.total_download_byte = 0
         self.forward_msg_detail_str: str = ""
         self.upload_user = None
@@ -236,6 +237,9 @@ class TaskNode:
                 the last reply is greater than 5 seconds, False otherwise.
         """
         cur_time = time.time()
+        # Check FLOOD_WAIT cooldown
+        if cur_time < self.flood_wait_until:
+            return False
         if cur_time - self.last_reply_time > 5.0:
             self.last_reply_time = cur_time
             return True
