@@ -24,6 +24,7 @@ _total_download_size: int = 0
 _last_download_time: float = time.time()
 _download_state: DownloadState = DownloadState.Downloading
 _paused_tasks: set = set()
+_cancelled_tasks: set = set()
 _failed_downloads: list = []
 _chat_titles: dict = {}  # chat_id -> chat_title mapping
 
@@ -72,13 +73,15 @@ def resume_task(task_id) -> bool:
 
 def delete_task(task_id) -> bool:
     """Delete a specific task from download results by task_id.
-    Supports both old numeric task_id and new chat_id_msg_id format."""
+    Also cancels the download so it doesn't reappear."""
     task_id_str = str(task_id)
+    _cancelled_tasks.add(task_id_str)
     for chat_id, messages in list(_download_result.items()):
         for msg_id, value in list(messages.items()):
-            # Match by composite key (chat_id_msg_id) or old task_id
             composite_key = f"{chat_id}_{msg_id}"
             if composite_key == task_id_str or str(value.get("task_id", "")) == task_id_str:
+                _cancelled_tasks.add(composite_key)
+                _cancelled_tasks.add(str(value.get("task_id", "")))
                 del _download_result[chat_id][msg_id]
                 if not _download_result[chat_id]:
                     del _download_result[chat_id]
@@ -215,6 +218,12 @@ async def update_download_status(
 
     chat_id = node.chat_id
 
+    # Check if this task has been cancelled (deleted from UI)
+    composite_key = f"{chat_id}_{message_id}"
+    if composite_key in _cancelled_tasks or str(node.task_id) in _cancelled_tasks:
+        client.stop_transmission()
+        return
+
     # Check if this individual task is paused (by composite key or task_id)
     composite_key = f"{chat_id}_{message_id}"
     while is_task_paused(composite_key) or is_task_paused(node.task_id):
@@ -258,6 +267,10 @@ async def update_download_status(
         _download_result[chat_id][message_id][
             "each_second_total_download"
         ] = each_second_total_download
+
+        # Mark completion time when download finishes
+        if down_byte >= total_size and total_size > 0:
+            _download_result[chat_id][message_id]["end_time"] = cur_time
     else:
         each_second_total_download = down_byte
         _download_result[chat_id][message_id] = {
@@ -269,6 +282,7 @@ async def update_download_status(
             "download_speed": down_byte / (cur_time - start_time),
             "each_second_total_download": each_second_total_download,
             "task_id": node.task_id,
+            "task_id_display": getattr(node, "task_id_display", ""),
         }
         _total_download_size += down_byte
 
@@ -300,6 +314,9 @@ def save_downloads():
                         "file_name": value.get("file_name", ""),
                         "total_size": value.get("total_size", 0),
                         "chat_title": get_chat_title(chat_id),
+                        "start_time": value.get("start_time", 0),
+                        "end_time": value.get("end_time", 0),
+                        "task_id_display": value.get("task_id_display", ""),
                     })
 
         data = {
@@ -340,11 +357,12 @@ def load_downloads():
                     "down_byte": item.get("total_size", 0),
                     "total_size": item.get("total_size", 0),
                     "file_name": item.get("file_name", ""),
-                    "start_time": 0,
-                    "end_time": 0,
+                    "start_time": item.get("start_time", 0),
+                    "end_time": item.get("end_time", 0),
                     "download_speed": 0,
                     "each_second_total_download": 0,
                     "task_id": item.get("task_id", ""),
+                    "task_id_display": item.get("task_id_display", ""),
                 }
 
         # Restore failed downloads

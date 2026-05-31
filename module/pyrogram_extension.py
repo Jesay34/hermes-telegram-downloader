@@ -58,6 +58,14 @@ def reset_download_cache():
     _download_cache.store.clear()
 
 
+def remove_download_cache(chat_id, message_id):
+    """Remove a specific entry from download cache."""
+    try:
+        _download_cache.store.pop((chat_id, message_id), None)
+    except Exception:
+        pass
+
+
 def _guess_mime_type(filename: str) -> Optional[str]:
     """Guess mime type"""
     return _mimetypes.guess_type(filename)[0]
@@ -1184,7 +1192,7 @@ async def _report_bot_status(
 
         new_msg_str = (
             f"`\n"
-            f"🆔 task id: {node.task_id}\n"
+            f"🆔 task: {node.task_id_display}\n"
             f"📥 {_t('Downloading')}: {format_byte(node.total_download_byte)}\n"
             f"├─ 📁 {_t('Total')}: {node.total_download_task}\n"
             f"├─ ✅ {_t('Success')}: {node.success_download_task}\n"

@@ -257,17 +257,16 @@ async def download_media(
                 ui_file_name = f"****{os.path.splitext(file_name)[-1]}"
 
             if _can_download(_type, file_formats, file_format):
-                if _is_exist(file_name) or _is_exist(temp_file_name):
-                    actual_path = file_name if _is_exist(file_name) else temp_file_name
-                    file_size = os.path.getsize(actual_path)
-                    if media_size > 0 and file_size >= media_size * 0.95:
+                if _is_exist(file_name):
+                    file_size = os.path.getsize(file_name)
+                    if media_size > 0 and file_size >= media_size:
                         logger.info(
                             f"id={message.id} {ui_file_name} "
                             f"{_t('already download,download skipped')}."
                         )
                         return DownloadStatus.SkipDownload, None
                     elif file_size > 0:
-                        os.remove(actual_path)
+                        os.remove(file_name)
                         logger.info(
                             f"id={message.id} {ui_file_name} "
                             f"{_t('File exists but size mismatch')}: "
@@ -429,8 +428,20 @@ async def download_chat_task(client: pyrogram.Client, chat_download_config: Chat
 
 async def download_all_chat(client: pyrogram.Client):
     """Download All chat"""
+    from module.task_store import save_task as _save_task
     for key, value in app.chat_download_config.items():
         value.node = TaskNode(chat_id=key)
+        _save_task(
+            task_id=value.node.task_id,
+            chat_id=key,
+            url="",
+            start_offset_id=value.last_read_message_id,
+            end_offset_id=0,
+            limit=0,
+            download_filter=value.download_filter,
+            from_user_id=0,
+            task_type="config",
+        )
         try:
             await download_chat_task(client, value, value.node)
         except Exception as e:

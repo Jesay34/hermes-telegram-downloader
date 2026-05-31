@@ -163,9 +163,12 @@ def get_download_list():
 
             # Format completion time
             end_time = value.get("end_time", 0)
+            start_time = value.get("start_time", 0)
             completed_time = ""
-            if end_time and is_already_down:
-                completed_time = datetime.datetime.fromtimestamp(end_time).strftime("%m-%d %H:%M:%S")
+            if is_already_down:
+                ts = end_time if end_time else start_time
+                if ts:
+                    completed_time = datetime.datetime.fromtimestamp(ts).strftime("%m-%d %H:%M:%S")
 
             result.append({
                 "task_id": str(task_id),
@@ -183,18 +186,26 @@ def get_download_list():
                 "status": status,
                 "end_time": end_time,
                 "completed_time": completed_time,
+                "task_id_display": value.get("task_id_display", "") or task_id,
             })
 
-    # Sort: completed by end_time desc (newest first), active by id desc
+    # Sort: newest task_id first
     if already_down:
-        result.sort(key=lambda x: x.get("end_time", 0), reverse=True)
+        def _sort_key(x):
+            tid = x.get("task_id_display", "")
+            try:
+                return int(tid.split("-")[-1]) if "-" in tid else 0
+            except ValueError:
+                return 0
+        result.sort(key=_sort_key, reverse=True)
     else:
-        result.sort(key=lambda x: int(x.get("id", "0")), reverse=True)
-
-    # Sequential display id with date prefix (resets on restart)
-    today_tag = datetime.datetime.now().strftime("%m%d")
-    for i, item in enumerate(result, 1):
-        item["task_id_display"] = f"{today_tag}-{i}"
+        def _sort_key_active(x):
+            tid = x.get("task_id_display", "")
+            try:
+                return int(tid.split("-")[-1]) if "-" in tid else 0
+            except ValueError:
+                return 0
+        result.sort(key=_sort_key_active, reverse=True)
 
     return jsonify(result)
 
@@ -249,9 +260,17 @@ def web_resume_task():
 @_flask_app.route("/delete_task", methods=["POST"])
 def web_delete_task():
     """Delete a specific download task"""
+    from module.pyrogram_extension import remove_download_cache
     task_id = request.args.get("task_id")
     if not task_id:
         return jsonify({"code": "0", "message": "task_id required"})
+    # Find and clear download cache before deleting
+    download_result = get_download_result()
+    for chat_id, messages in download_result.items():
+        for msg_id, value in messages.items():
+            composite_key = f"{chat_id}_{msg_id}"
+            if composite_key == str(task_id) or str(value.get("task_id", "")) == str(task_id):
+                remove_download_cache(chat_id, msg_id)
     # Try active downloads first, then failed
     success = delete_task(task_id)
     if not success:

@@ -77,7 +77,8 @@ def complete_task(task_id):
     """Mark a task as completed and remove it from the store."""
     with _lock:
         tasks = _load_all()
-        tasks = [t for t in tasks if t.get("task_id") != task_id]
+        tid = task_id if isinstance(task_id, int) else int(task_id) if str(task_id).isdigit() else task_id
+        tasks = [t for t in tasks if t.get("task_id") != tid and str(t.get("task_id", "")) != str(task_id)]
         _save_all(tasks)
         logger.info(f"Removed completed bot task {task_id} from store")
 

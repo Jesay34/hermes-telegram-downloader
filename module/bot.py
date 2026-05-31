@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from datetime import datetime
 from typing import Callable, List, Union
 
@@ -147,6 +148,7 @@ class DownloadBot:
 
                     # For forward tasks, set upload_telegram_chat_id
                     dst_chat_id = extra_data.get("dst_chat_id", 0) if extra_data else 0
+                    saved_display_id = extra_data.get("task_id_display", "") if extra_data else ""
 
                     node = TaskNode(
                         chat_id=chat_id,
@@ -158,6 +160,7 @@ class DownloadBot:
                         bot=self.bot,
                         task_id=task_id,
                         upload_telegram_chat_id=dst_chat_id,
+                        task_id_display=saved_display_id,
                     )
                     self.add_task_node(node)
 
@@ -169,10 +172,9 @@ class DownloadBot:
                             type_label = "转发" if task_type == "forward" else "下载"
                             await self.bot.send_message(
                                 from_user_id,
-                                f"🔄 恢复未完成任务 #{task_id}\n"
+                                f"🔄 恢复未完成任务 task: {node.task_id_display}\n"
                                 f"群组: {chat_title}\n"
-                                f"类型: {type_label}\n"
-                                f"从消息 {start_offset_id} 继续",
+                                f"类型: {type_label}",
                             )
                         except Exception as e:
                             logger.warning(f"Failed to send recovery notification: {e}")
@@ -181,6 +183,11 @@ class DownloadBot:
                         # Recover forward task
                         self.app.loop.create_task(
                             self._recover_forward_task(task_data, node, start_offset_id)
+                        )
+                    elif task_type == "direct":
+                        # Recover direct download (single message)
+                        self.app.loop.create_task(
+                            self._recover_direct_task(task_data, node)
                         )
                     else:
                         # Recover download task
@@ -215,6 +222,48 @@ class DownloadBot:
             await report_bot_status(self.bot, node, immediate_reply=True)
             node.stop_transmission()
             complete_task(node.task_id)
+
+    async def _recover_direct_task(self, task_data, node):
+        """Recover a direct download task (single message)."""
+        from module.pyrogram_extension import report_bot_status
+        extra_data = task_data.get("extra_data", {})
+        message_id = extra_data.get("message_id", 0)
+        if not message_id:
+            logger.warning(f"Direct recovery failed: no message_id for task {node.task_id}")
+            complete_task(node.task_id)
+            return
+        success = False
+        try:
+            msg = await self.client.get_messages(node.chat_id, message_id)
+            if msg and msg.media:
+                logger.info(f"Recovery: re-downloading message {message_id} for task {node.task_id}")
+                await self.add_download_task(msg, node)
+                node.is_running = True
+                # Wait for download to finish (with 10min timeout)
+                timeout = time.time() + 600
+                while node.total_task == 0 or node.total_download_task < node.total_task:
+                    await asyncio.sleep(3)
+                    if node.is_stop_transmission:
+                        break
+                    if time.time() > timeout:
+                        logger.warning(f"Recovery timeout for task {node.task_id}")
+                        break
+                # Check if download actually succeeded
+                if node.success_download_task > 0:
+                    success = True
+                else:
+                    logger.warning(f"Recovery: task {node.task_id} completed but 0 successful downloads (total={node.total_task}, success={node.success_download_task})")
+            else:
+                logger.warning(f"Direct recovery: message {message_id} not found or has no media (msg={msg is not None}, media={getattr(msg, 'media', None) if msg else None})")
+        except Exception as e:
+            logger.warning(f"Direct recovery failed for task {node.task_id}: {e}")
+        finally:
+            await report_bot_status(self.bot, node, immediate_reply=True)
+            node.stop_transmission()
+            if success:
+                complete_task(node.task_id)
+            else:
+                logger.info(f"Recovery task {node.task_id} not completed, will retry next restart")
 
     def assign_config(self, _config: dict):
         """assign config from str.
@@ -938,6 +987,19 @@ async def direct_download(
 
     _bot.add_task_node(node)
 
+    save_task(
+        task_id=node.task_id,
+        chat_id=chat_id,
+        url="",
+        start_offset_id=0,
+        end_offset_id=0,
+        limit=1,
+        download_filter=None,
+        from_user_id=message.from_user.id,
+        task_type="direct",
+        extra_data={"message_id": download_message.id, "task_id_display": node.task_id_display},
+    )
+
     await _bot.add_download_task(
         download_message,
         node,
@@ -1115,6 +1177,7 @@ async def download_from_bot(client: pyrogram.Client, message: pyrogram.types.Mes
                 download_filter=download_filter,
                 from_user_id=message.from_user.id,
                 task_type="download",
+                extra_data={"task_id_display": node.task_id_display},
             )
             _bot.app.loop.create_task(
                 _bot.download_chat_task(_bot.client, chat_download_config, node)
@@ -1305,7 +1368,7 @@ async def forward_message_impl(
         download_filter=download_filter,
         from_user_id=message.from_user.id,
         task_type="forward",
-        extra_data={"dst_chat_id": dst_chat_id, "dst_chat_link": dst_chat_link},
+        extra_data={"dst_chat_id": dst_chat_id, "dst_chat_link": dst_chat_link, "task_id_display": node.task_id_display},
     )
 
     if not node.has_protected_content:

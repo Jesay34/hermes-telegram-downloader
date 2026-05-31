@@ -26,8 +26,13 @@ services:
       - "./sessions:/app/sessions"
       # 临时文件
       - "./temp:/app/temp"
-      # 模块文件覆盖（修复暂停恢复按钮 + 速度归零）
+      # 模块文件覆盖
       - "./module/download_stat.py:/app/module/download_stat.py"
       - "./module/web.py:/app/module/web.py"
       - "./module/templates/index.html:/app/module/templates/index.html"
+      - "./module/bot.py:/app/module/bot.py"
+      - "./module/pyrogram_extension.py:/app/module/pyrogram_extension.py"
+      - "./module/task_store.py:/app/module/task_store.py"
+      - "./module/app.py:/app/module/app.py"
+      - "./media_downloader.py:/app/media_downloader.py"
     restart: unless-stopped
