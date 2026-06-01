@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import time
 from datetime import datetime
 from typing import Callable, List, Union
 
@@ -245,14 +244,10 @@ class DownloadBot:
                 logger.info(f"Recovery: re-downloading message {message_id} for task {node.task_id}")
                 await self.add_download_task(msg, node)
                 node.is_running = True
-                # Wait for download to finish (with 10min timeout)
-                timeout = time.time() + 600
+                # Wait for download to finish (no timeout — large files may take hours)
                 while node.total_task == 0 or node.total_download_task < node.total_task:
                     await asyncio.sleep(3)
                     if node.is_stop_transmission:
-                        break
-                    if time.time() > timeout:
-                        logger.warning(f"Recovery timeout for task {node.task_id}")
                         break
                 # Check if download actually succeeded
                 if node.success_download_task > 0:
