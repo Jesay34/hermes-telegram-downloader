@@ -105,6 +105,7 @@ def add_failed_download(chat_id, msg_id, task_id, file_name, error_message, tota
         "total_size": total_size,
         "timestamp": time.time(),
     })
+    save_downloads()  # 失败时立即持久化
 
 
 def get_failed_downloads() -> list:
@@ -271,6 +272,8 @@ async def update_download_status(
         # Mark completion time when download finishes
         if down_byte >= total_size and total_size > 0:
             _download_result[chat_id][message_id]["end_time"] = cur_time
+            # 下载完成时立即持久化
+            save_downloads()
     else:
         each_second_total_download = down_byte
         _download_result[chat_id][message_id] = {

@@ -447,7 +447,9 @@ async def download_all_chat(client: pyrogram.Client):
         except Exception as e:
             logger.warning(f"Download {key} error: {e}")
         finally:
-            value.need_check = True
+                    value.need_check = True
+                    from module.task_store import complete_task
+                    complete_task(value.node.task_id)
 
 
 async def run_until_all_task_finish():
@@ -474,16 +476,6 @@ async def stop_server(client: pyrogram.Client):
     await client.stop()
 
 
-async def periodic_save():
-    """Periodically save download history for crash recovery."""
-    while app.is_running:
-        await asyncio.sleep(60)
-        try:
-            save_downloads()
-        except Exception as e:
-            logger.warning(f"Periodic save failed: {e}")
-
-
 def main():
     """Main function"""
     tasks = []
@@ -499,7 +491,6 @@ def main():
         app.loop.run_until_complete(start_server(client))
         logger.success(_t("Successfully started (Press Ctrl+C to stop)"))
         app.loop.create_task(download_all_chat(client))
-        app.loop.create_task(periodic_save())
         for _ in range(app.max_download_task):
             tasks.append(app.loop.create_task(worker(client)))
         if app.bot_token:
