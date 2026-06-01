@@ -3,7 +3,7 @@
 本地开发专用 - 独立 Flask Web UI + Mock 数据
 不依赖项目中的 module/web.py, 不依赖 pyrogram
 用法: python run_local.py
-访问: http://localhost:15555
+访问: http://localhost:5000
 """
 
 import os, json
@@ -107,7 +107,7 @@ def resume_task():
     return jsonify(code="1", message="resumed")
 
 if __name__ == "__main__":
-    port = 15555
+    port = 5000
     print("=" * 50)
     print("  Telegram Media Downloader - Dev Mode")
     print(f"  浏览器: http://localhost:{port}")

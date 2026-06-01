@@ -49,7 +49,7 @@
 | **暂停/恢复** | WebUI 新增任务暂停/恢复功能 |
 | **日志拆分** | tdl.log + download.log 分离，保留 30 天 |
 | **跳过检测修复** | 文件大小 >= 95% 即判定为已跳过 |
-| **端口变更** | 默认端口从 5000 改为 15555 |
+| **端口变更** | 默认端口保持 5000（未变更） |
 | **本地开发模式** | 新增 run_local.py，独立 Mock 调试 |
 | **精简代码库** | 移除测试文件、多余 CI 配置、捐赠二维码等 |
 | **OCR 集成** | 接入 PaddleOCR / Qwen-VL 图片文字提取 |
@@ -90,7 +90,7 @@ python media_downloader.py
 ```bash
 # 无需 Telegram 账号，直接启动 WebUI
 python run_local.py
-# 访问 http://localhost:15555
+# 访问 http://localhost:5000
 ```
 
 ## 配置说明
@@ -103,7 +103,7 @@ python run_local.py
 | chat.chat_id | 要下载的频道/群组 ID |
 | media_types | 下载的媒体类型列表 |
 | save_path | 文件保存路径 |
-| web_port | Web 管理界面端口（默认 15555） |
+| web_port | Web 管理界面端口（默认 5000） |
 
 详细配置参考 [config.yaml.example](./config.yaml.example) 和原项目 [wiki](https://github.com/tangyoha/telegram_media_downloader/wiki)。
 
