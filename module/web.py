@@ -159,7 +159,10 @@ def get_download_list():
                 status = "active"
 
             # Get chat title from cache
-            chat_title = value.get("source_chat_title", "") or get_chat_title(chat_id)
+            source_title = value.get("source_chat_title", "")
+            if not source_title and value.get("source_chat_id"):
+                source_title = get_chat_title(value["source_chat_id"]) or ""
+            chat_title = source_title or get_chat_title(chat_id)
 
             # Format times
             end_time = value.get("end_time", 0)

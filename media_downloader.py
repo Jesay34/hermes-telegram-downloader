@@ -275,6 +275,12 @@ async def download_task(client: pyrogram.Client, message: pyrogram.types.Message
     download_status, file_name = await download_media(
         client, message, app.media_types, app.file_formats, node
     )
+    # Backfill source_chat_title from cache (populated during download_media)
+    if not node.source_chat_title and getattr(node, 'source_chat_id', 0):
+        from module.download_stat import get_chat_title as _gct
+        cached = _gct(node.source_chat_id)
+        if cached:
+            node.source_chat_title = cached
     if app.enable_download_txt and message.text and not message.media:
         download_status, file_name = await save_msg_to_file(app, node.chat_id, message)
     if not node.bot:

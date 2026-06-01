@@ -287,6 +287,7 @@ async def update_download_status(
             "task_id": node.task_id,
             "task_id_display": getattr(node, "task_id_display", ""),
             "source_chat_title": getattr(node, "source_chat_title", ""),
+            "source_chat_id": getattr(node, "source_chat_id", 0),
         }
         _total_download_size += down_byte
 

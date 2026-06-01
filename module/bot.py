@@ -194,9 +194,14 @@ class DownloadBot:
             # Cache source channel title for web display
             source_chat_id_extra = extra_data.get("source_chat_id", 0) if extra_data else 0
             source_chat_title_extra = extra_data.get("source_chat_title", "") if extra_data else ""
+            if not source_chat_title_extra and source_chat_id_extra:
+                # Old task without source_chat_title — try cache
+                from module.download_stat import get_chat_title as _gct
+                source_chat_title_extra = _gct(source_chat_id_extra) or ""
             if source_chat_id_extra and source_chat_title_extra:
                 set_chat_title(source_chat_id_extra, source_chat_title_extra)
             node.source_chat_title = source_chat_title_extra
+            node.source_chat_id = source_chat_id_extra
 
             state_label = "中断" if download_state == "downloading" else "待执行"
             # Notify user
@@ -1067,6 +1072,7 @@ async def direct_download(
 
     node.client = client
     node.source_chat_title = source_chat_title
+    node.source_chat_id = source_chat_id
 
     _bot.add_task_node(node)
 
