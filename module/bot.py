@@ -255,13 +255,30 @@ class DownloadBot:
         from module.pyrogram_extension import report_bot_status
         extra_data = task_data.get("extra_data", {})
         message_id = extra_data.get("message_id", 0)
-        if not message_id:
+        source_chat_id = extra_data.get("source_chat_id", 0)
+        source_message_id = extra_data.get("source_message_id", 0)
+
+        if not message_id and not source_message_id:
             logger.warning(f"Direct recovery failed: no message_id for task {node.task_id}")
             complete_task(node.task_id)
             return
+
         success = False
+        msg = None
         try:
-            msg = await self.client.get_messages(node.chat_id, message_id)
+            # Try source channel first (more reliable for forwarded messages)
+            if source_chat_id and source_message_id:
+                msg = await self.client.get_messages(source_chat_id, source_message_id)
+                if msg and msg.media:
+                    logger.info(f"Recovery: re-downloading from source {source_chat_id}/{source_message_id} for task {node.task_id}")
+                else:
+                    logger.info(f"Recovery: source message has no media, trying original chat")
+                    msg = None
+
+            # Fallback: try original chat_id + message_id
+            if not msg and message_id:
+                msg = await self.client.get_messages(node.chat_id, message_id)
+
             if msg and msg.media:
                 logger.info(f"Recovery: re-downloading message {message_id} for task {node.task_id}")
                 await self.add_download_task(msg, node)
@@ -277,7 +294,7 @@ class DownloadBot:
                 else:
                     logger.warning(f"Recovery: task {node.task_id} completed but 0 successful downloads (total={node.total_task}, success={node.success_download_task})")
             else:
-                logger.warning(f"Direct recovery: message {message_id} not found or has no media (msg={msg is not None}, media={getattr(msg, 'media', None) if msg else None})")
+                logger.warning(f"Direct recovery: message not found or has no media (msg={msg is not None}, media={getattr(msg, 'media', None) if msg else None})")
         except Exception as e:
             logger.warning(f"Direct recovery failed for task {node.task_id}: {e}")
         finally:
@@ -988,8 +1005,15 @@ async def direct_download(
     message: pyrogram.types.Message,
     download_message: pyrogram.types.Message,
     client: pyrogram.Client = None,
+    source_chat_id: int = 0,
+    source_message_id: int = 0,
 ):
-    """Direct Download"""
+    """Direct Download
+
+    Args:
+        source_chat_id: Original source channel ID (for forwarded messages recovery)
+        source_message_id: Original source message ID (for forwarded messages recovery)
+    """
 
     replay_message = "Direct download..."
     last_reply_message = await download_bot.bot.send_message(
@@ -1010,6 +1034,14 @@ async def direct_download(
 
     _bot.add_task_node(node)
 
+    extra_data = {
+        "message_id": download_message.id,
+        "task_id_display": node.task_id_display,
+    }
+    if source_chat_id and source_message_id:
+        extra_data["source_chat_id"] = source_chat_id
+        extra_data["source_message_id"] = source_message_id
+
     save_task(
         task_id=node.task_id,
         chat_id=chat_id,
@@ -1020,7 +1052,7 @@ async def direct_download(
         download_filter=None,
         from_user_id=message.from_user.id,
         task_type="direct",
-        extra_data={"message_id": download_message.id, "task_id_display": node.task_id_display},
+        extra_data=extra_data,
     )
 
     await _bot.add_download_task(
@@ -1046,7 +1078,18 @@ async def download_forward_media(
     """
 
     if message.media and getattr(message, message.media.value):
-        await direct_download(_bot, message.from_user.id, message, message, client)
+        # Extract source channel info for recovery
+        source_chat_id = 0
+        source_message_id = 0
+        if message.forward_from_chat:
+            source_chat_id = message.forward_from_chat.id
+            source_message_id = message.forward_from_message_id or 0
+
+        await direct_download(
+            _bot, message.from_user.id, message, message, client,
+            source_chat_id=source_chat_id,
+            source_message_id=source_message_id,
+        )
         return
 
     await client.send_message(
