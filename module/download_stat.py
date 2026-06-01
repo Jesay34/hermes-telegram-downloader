@@ -286,6 +286,7 @@ async def update_download_status(
             "each_second_total_download": each_second_total_download,
             "task_id": node.task_id,
             "task_id_display": getattr(node, "task_id_display", ""),
+            "source_chat_title": getattr(node, "source_chat_title", ""),
         }
         _total_download_size += down_byte
 
@@ -316,7 +317,7 @@ def save_downloads():
                         "msg_id": str(msg_id),
                         "file_name": value.get("file_name", ""),
                         "total_size": value.get("total_size", 0),
-                        "chat_title": get_chat_title(chat_id),
+                        "chat_title": value.get("source_chat_title", "") or get_chat_title(chat_id),
                         "start_time": value.get("start_time", 0),
                         "end_time": value.get("end_time", 0),
                         "task_id_display": value.get("task_id_display", ""),
@@ -366,6 +367,7 @@ def load_downloads():
                     "each_second_total_download": 0,
                     "task_id": item.get("task_id", ""),
                     "task_id_display": item.get("task_id_display", ""),
+                    "source_chat_title": item.get("chat_title", ""),
                 }
 
         # Restore failed downloads

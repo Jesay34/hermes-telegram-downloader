@@ -1206,13 +1206,22 @@ async def _report_bot_status(
         )
 
         if new_msg_str != node.last_edit_msg:
-            node.last_edit_msg = new_msg_str
-            await client.edit_message_text(
-                node.from_user_id,
-                node.reply_message_id,
-                new_msg_str,
-                parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
-            )
+            try:
+                await client.edit_message_text(
+                    node.from_user_id,
+                    node.reply_message_id,
+                    new_msg_str,
+                    parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
+                )
+                node.last_edit_msg = new_msg_str
+            except pyrogram.errors.exceptions.flood_420.FloodWait as e:
+                wait_seconds = e.value
+                node.flood_wait_until = time.time() + wait_seconds
+                logger.warning(
+                    "FLOOD_WAIT in edit_message: {} seconds", wait_seconds
+                )
+            except Exception as e:
+                logger.debug(f"edit_message_text failed: {e}")
 
 
 def set_max_concurrent_transmissions(

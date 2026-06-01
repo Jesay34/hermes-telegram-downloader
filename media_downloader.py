@@ -98,6 +98,78 @@ def _is_exist(file_path: str) -> bool:
     return not os.path.isdir(file_path) and os.path.exists(file_path)
 
 
+def _cleanup_temp_file(temp_file_name: str):
+    """Remove temp file if it exists."""
+    if temp_file_name and os.path.exists(temp_file_name):
+        try:
+            os.remove(temp_file_name)
+        except OSError:
+            pass
+
+
+def _cleanup_stale_temp_files():
+    """Remove stale temp files on startup.
+
+    Rules:
+    - 0-byte .temp files: always delete (empty shells from failed downloads)
+    - Non-zero .temp files: delete if corresponding target file exists in downloads/
+    - Empty directories in temp/: delete
+    """
+    temp_dir = app.temp_save_path
+    if not os.path.isdir(temp_dir):
+        return
+
+    removed = 0
+    for root, dirs, files in os.walk(temp_dir, topdown=False):
+        for f in files:
+            if not f.endswith('.temp'):
+                continue
+            temp_path = os.path.join(root, f)
+            try:
+                file_size = os.path.getsize(temp_path)
+            except OSError:
+                continue
+
+            if file_size == 0:
+                # Empty temp file — always remove
+                try:
+                    os.remove(temp_path)
+                    removed += 1
+                except OSError:
+                    pass
+            else:
+                # Non-zero: check if target already exists in downloads/
+                # temp path: temp/chat_id/filename.ext.temp
+                # target path: downloads/chat_id/filename.ext
+                rel_path = os.path.relpath(temp_path, temp_dir)
+                # Strip .temp suffix to get the target filename
+                target_name = f[:-5] if f.endswith('.temp') else f
+                target_path = os.path.join(
+                    os.path.abspath("."), "downloads",
+                    os.path.dirname(rel_path), target_name
+                )
+                if os.path.exists(target_path):
+                    try:
+                        target_size = os.path.getsize(target_path)
+                        if target_size >= file_size:
+                            os.remove(temp_path)
+                            removed += 1
+                    except OSError:
+                        pass
+
+        # Remove empty directories
+        for d in dirs:
+            dir_path = os.path.join(root, d)
+            try:
+                if not os.listdir(dir_path):
+                    os.rmdir(dir_path)
+            except OSError:
+                pass
+
+    if removed:
+        logger.info(f"Startup cleanup: removed {removed} stale temp files")
+
+
 async def _get_media_meta(
     chat_id: Union[int, str],
     message: pyrogram.types.Message,
@@ -299,6 +371,7 @@ async def download_media(
                 _move_to_download_path(temp_download_path, file_name)
                 return DownloadStatus.SuccessDownload, file_name
         except pyrogram.errors.exceptions.bad_request_400.BadRequest:
+            _cleanup_temp_file(temp_file_name)
             logger.warning(
                 f"Message[{message.id}]: {_t('file reference expired, refetching')}..."
             )
@@ -309,10 +382,12 @@ async def download_media(
                     f"Message[{message.id}]: {_t('file reference expired for 3 retries, download skipped.')}"
                 )
         except pyrogram.errors.exceptions.flood_420.FloodWait as wait_err:
+            _cleanup_temp_file(temp_file_name)
             await asyncio.sleep(wait_err.value)
             logger.info("Message[{}]: FlowWait {}s, waiting", message.id, wait_err.value)
             _check_timeout(retry, message.id)
         except TypeError:
+            _cleanup_temp_file(temp_file_name)
             logger.warning(
                 f"{_t('Timeout Error occurred when downloading Message')}[{message.id}], "
                 f"{_t('retrying after')} {RETRY_TIME_OUT} {_t('seconds')}"
@@ -323,12 +398,14 @@ async def download_media(
                     f"Message[{message.id}]: {_t('Timing out after 3 reties, download skipped.')}"
                 )
         except Exception as e:
+            _cleanup_temp_file(temp_file_name)
             logger.error(
                 f"Message[{message.id}]: "
                 f"{_t('could not be downloaded due to following exception')}:\n[{e}].",
                 exc_info=True,
             )
             break
+    _cleanup_temp_file(temp_file_name)
     return DownloadStatus.FailedDownload, None
 
 
@@ -489,6 +566,7 @@ def main():
     )
     try:
         app.pre_run()
+        _cleanup_stale_temp_files()
         init_web(app)
         set_max_concurrent_transmissions(client, app.max_concurrent_transmissions)
         app.loop.run_until_complete(start_server(client))

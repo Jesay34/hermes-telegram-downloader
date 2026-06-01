@@ -191,6 +191,13 @@ class DownloadBot:
             )
             self.add_task_node(node)
 
+            # Cache source channel title for web display
+            source_chat_id_extra = extra_data.get("source_chat_id", 0) if extra_data else 0
+            source_chat_title_extra = extra_data.get("source_chat_title", "") if extra_data else ""
+            if source_chat_id_extra and source_chat_title_extra:
+                set_chat_title(source_chat_id_extra, source_chat_title_extra)
+            node.source_chat_title = source_chat_title_extra
+
             state_label = "中断" if download_state == "downloading" else "待执行"
             # Notify user
             if from_user_id and self.bot:
@@ -303,6 +310,8 @@ class DownloadBot:
             if success:
                 complete_task(node.task_id)
             else:
+                # Cleanup temp files from failed recovery
+                _cleanup_task_temp_files(node.chat_id)
                 logger.info(f"Recovery task {node.task_id} not completed, will retry next restart")
 
     def assign_config(self, _config: dict):
@@ -512,6 +521,30 @@ class DownloadBot:
 
 
 _bot = DownloadBot()
+
+
+def _cleanup_task_temp_files(chat_id: int):
+    """Remove temp files for a specific chat from temp directory."""
+    temp_dir = os.path.join(os.path.abspath("."), "temp")
+    chat_dir = os.path.join(temp_dir, str(chat_id))
+    if not os.path.isdir(chat_dir):
+        return
+    removed = 0
+    for f in os.listdir(chat_dir):
+        if f.endswith('.temp'):
+            try:
+                os.remove(os.path.join(chat_dir, f))
+                removed += 1
+            except OSError:
+                pass
+    # Remove directory if empty
+    try:
+        if not os.listdir(chat_dir):
+            os.rmdir(chat_dir)
+    except OSError:
+        pass
+    if removed:
+        logger.info(f"Cleanup: removed {removed} stale temp files for chat {chat_id}")
 
 
 async def start_download_bot(
@@ -1007,12 +1040,14 @@ async def direct_download(
     client: pyrogram.Client = None,
     source_chat_id: int = 0,
     source_message_id: int = 0,
+    source_chat_title: str = "",
 ):
     """Direct Download
 
     Args:
         source_chat_id: Original source channel ID (for forwarded messages recovery)
         source_message_id: Original source message ID (for forwarded messages recovery)
+        source_chat_title: Source channel title (for web display)
     """
 
     replay_message = "Direct download..."
@@ -1031,6 +1066,7 @@ async def direct_download(
     )
 
     node.client = client
+    node.source_chat_title = source_chat_title
 
     _bot.add_task_node(node)
 
@@ -1041,6 +1077,8 @@ async def direct_download(
     if source_chat_id and source_message_id:
         extra_data["source_chat_id"] = source_chat_id
         extra_data["source_message_id"] = source_message_id
+    if source_chat_title:
+        extra_data["source_chat_title"] = source_chat_title
 
     save_task(
         task_id=node.task_id,
@@ -1081,14 +1119,17 @@ async def download_forward_media(
         # Extract source channel info for recovery
         source_chat_id = 0
         source_message_id = 0
+        source_chat_title = ""
         if message.forward_from_chat:
             source_chat_id = message.forward_from_chat.id
             source_message_id = message.forward_from_message_id or 0
+            source_chat_title = message.forward_from_chat.title or ""
 
         await direct_download(
             _bot, message.from_user.id, message, message, client,
             source_chat_id=source_chat_id,
             source_message_id=source_message_id,
+            source_chat_title=source_chat_title,
         )
         return
 
