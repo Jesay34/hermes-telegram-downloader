@@ -150,6 +150,25 @@ class DownloadBot:
         except Exception as e:
             logger.warning(f"Task recovery failed: {e}")
 
+        # After recovery, update persistent counter to max of all recovered task display IDs
+        try:
+            from module.task_store import _set_seq, _parse_seq_from_display, _lock
+            max_seq = 0
+            today = time.strftime('%m%d')
+            for task_data in (downloading_tasks + pending_tasks):
+                extra = task_data.get("extra_data", {}) or {}
+                display = extra.get("task_id_display", "")
+                if display:
+                    seq = _parse_seq_from_display(display)
+                    if seq > max_seq:
+                        max_seq = seq
+            if max_seq > 0:
+                with _lock:
+                    _set_seq(today, max_seq)
+                logger.info(f"Updated persistent task counter to {max_seq} (after recovering {len(downloading_tasks) + len(pending_tasks)} tasks)")
+        except Exception as e:
+            logger.warning(f"Failed to update task counter after recovery: {e}")
+
     async def _recover_single_task(self, task_data):
         """Recover a single task."""
         try:

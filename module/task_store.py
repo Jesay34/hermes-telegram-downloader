@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import threading
 import time
 from typing import Optional
@@ -9,7 +10,53 @@ from typing import Optional
 from loguru import logger
 
 _TASKS_FILE = os.path.join(os.path.abspath("."), "log", "bot_tasks.json")
+_COUNTER_FILE = os.path.join(os.path.abspath("."), "log", "task_counter.json")
 _lock = threading.Lock()
+
+
+def _get_next_seq(date_str: str) -> int:
+    """Get next sequential number for today, auto-increment.
+    
+    Date changes → seq resets to 1. Otherwise increments from last value.
+    Thread-safe via _lock; caller must hold _lock.
+    """
+    try:
+        if os.path.exists(_COUNTER_FILE):
+            with open(_COUNTER_FILE, "r") as f:
+                data = json.load(f)
+            if data.get("date") == date_str:
+                data["seq"] += 1
+            else:
+                data["date"] = date_str
+                data["seq"] = 1
+        else:
+            data = {"date": date_str, "seq": 1}
+        os.makedirs(os.path.dirname(_COUNTER_FILE), exist_ok=True)
+        with open(_COUNTER_FILE, "w") as f:
+            json.dump(data, f)
+        return data["seq"]
+    except Exception as e:
+        logger.warning(f"task_counter read/write error: {e}")
+        return 1
+
+
+def _set_seq(date_str: str, seq: int):
+    """Force-set the counter to at least `seq` for today.
+    Thread-safe via _lock; caller must hold _lock.
+    """
+    try:
+        data = {"date": date_str, "seq": seq}
+        os.makedirs(os.path.dirname(_COUNTER_FILE), exist_ok=True)
+        with open(_COUNTER_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.warning(f"task_counter write error: {e}")
+
+
+def _parse_seq_from_display(task_id_display: str) -> int:
+    """Extract the numeric part from 'MMDD-N' display id. Returns 0 if unparseable."""
+    m = re.search(r"-(\d+)$", task_id_display)
+    return int(m.group(1)) if m else 0
 
 
 def _load_all() -> list:

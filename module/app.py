@@ -118,9 +118,6 @@ class QueryHandlerStr:
 class TaskNode:
     """Task node"""
 
-    _task_counter = 0  # Sequential counter, resets on restart
-
-    # pylint: disable = R0913
     def __init__(
         self,
         chat_id: Union[int, str],
@@ -180,12 +177,15 @@ class TaskNode:
         self.reply_to_message = None
         self.cloud_drive_upload_stat_dict: dict = {}
 
-        # Generate sequential display id (skip counter if provided)
+        # Generate sequential display id (persistent across restarts)
         if task_id_display:
             self.task_id_display = task_id_display
         else:
-            TaskNode._task_counter += 1
-            self.task_id_display = f"{time.strftime('%m%d')}-{TaskNode._task_counter}"
+            from module.task_store import _get_next_seq, _lock
+            date_str = time.strftime('%m%d')
+            with _lock:
+                seq = _get_next_seq(date_str)
+            self.task_id_display = f"{date_str}-{seq}"
 
     def skip_msg_id(self, msg_id: int):
         """Skip if message id out of range"""
