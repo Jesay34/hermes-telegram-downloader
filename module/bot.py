@@ -154,6 +154,7 @@ class DownloadBot:
         try:
             from module.task_store import _set_seq, _parse_seq_from_display, _lock
             max_seq = 0
+            import time
             today = time.strftime('%m%d')
             for task_data in (downloading_tasks + pending_tasks):
                 extra = task_data.get("extra_data", {}) or {}
