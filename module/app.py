@@ -156,6 +156,7 @@ class TaskNode:
         self.skip_download_task = 0
         self.last_reply_time = time.time()
         self.last_edit_msg: str = ""
+        self.last_progress_pct: int = -1  # Last reported progress percentage (0-100), -1 = never reported
         self.flood_wait_until: float = 0  # Non-blocking FLOOD_WAIT cooldown
         self.total_download_byte = 0
         self.forward_msg_detail_str: str = ""

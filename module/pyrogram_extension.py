@@ -1206,6 +1206,16 @@ async def _report_bot_status(
         )
 
         if new_msg_str != node.last_edit_msg:
+            # Throttle: only update every 20% progress (skip immediate_reply/final)
+            if not immediate_reply and node.total_download_task > 0:
+                current_pct = int(node.success_download_task / node.total_download_task * 100)
+                bucket = (current_pct // 20) * 20
+                prev_bucket = (node.last_progress_pct // 20) * 20 if node.last_progress_pct >= 0 else -1
+                if bucket == prev_bucket and node.last_progress_pct >= 0:
+                    node.last_progress_pct = current_pct
+                    return
+                node.last_progress_pct = current_pct
+
             try:
                 await client.edit_message_text(
                     node.from_user_id,
