@@ -1233,6 +1233,8 @@ async def _report_bot_status(
                     "FLOOD_WAIT in edit_message: need to wait {:.0f}h {:.0f}m ({} seconds)",
                     wait_hours, wait_minutes, wait_seconds,
                 )
+            except pyrogram.errors.exceptions.bad_request_400.MessageNotModified:
+                pass
             except Exception as e:
                 logger.debug(f"edit_message_text failed: {e}")
 
