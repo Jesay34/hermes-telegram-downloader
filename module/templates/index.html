@@ -91,38 +91,44 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6">
             <nav class="flex gap-0" role="tablist">
                 <button
-                    @click="activeTab = 'active'; selectedTasks = []"
-                    class="px-4 py-3 text-sm font-medium transition-colors relative"
-                    :class="activeTab === 'active' ? 'tab-active' : 'tab-inactive'"
-                    role="tab"
-                >
-                    <span class="flex items-center gap-2">
-                        下载中
-                        <span x-show="activeTasks.length > 0" class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-blue-500 text-white" x-text="activeTasks.length"></span>
-                    </span>
-                </button>
-                <button
-                    @click="activeTab = 'completed'; selectedTasks = []"
-                    class="px-4 py-3 text-sm font-medium transition-colors relative"
-                    :class="activeTab === 'completed' ? 'tab-active' : 'tab-inactive'"
-                    role="tab"
-                >
-                    <span class="flex items-center gap-2">
-                        已完成
-                        <span x-show="completedTasks.length > 0" class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-green-500 text-white" x-text="completedTasks.length"></span>
-                    </span>
-                </button>
-                <button
-                    @click="activeTab = 'failed'; selectedTasks = []"
-                    class="px-4 py-3 text-sm font-medium transition-colors relative"
-                    :class="activeTab === 'failed' ? 'tab-active' : 'tab-inactive'"
-                    role="tab"
-                >
-                    <span class="flex items-center gap-2">
-                        失败
-                        <span x-show="failedTasks.length > 0" class="inline-flex items-center justify-center w-5 h-5 text-xs font-bold rounded-full bg-red-500 text-white" x-text="failedTasks.length"></span>
-                    </span>
-                </button>
+                                    @click="activeTab = 'active'; selectedTasks = []"
+                                    class="px-4 py-3 text-sm font-medium transition-colors relative"
+                                    :class="activeTab === 'active' ? 'tab-active' : 'tab-inactive'"
+                                    role="tab"
+                                >
+                                    <span class="flex items-center gap-2">
+                                        下载中
+                                        <span x-show="activeTasks.length > 0"
+                                              class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md bg-blue-500 text-white min-w-[1.5rem] justify-center"
+                                              x-text="activeTasks.length"></span>
+                                    </span>
+                                </button>
+                                <button
+                                    @click="activeTab = 'completed'; selectedTasks = []"
+                                    class="px-4 py-3 text-sm font-medium transition-colors relative"
+                                    :class="activeTab === 'completed' ? 'tab-active' : 'tab-inactive'"
+                                    role="tab"
+                                >
+                                    <span class="flex items-center gap-2">
+                                        已完成
+                                        <span x-show="completedTasks.length > 0"
+                                              class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md bg-green-500 text-white min-w-[1.5rem] justify-center"
+                                              x-text="completedTasks.length"></span>
+                                    </span>
+                                </button>
+                                <button
+                                    @click="activeTab = 'failed'; selectedTasks = []"
+                                    class="px-4 py-3 text-sm font-medium transition-colors relative"
+                                    :class="activeTab === 'failed' ? 'tab-active' : 'tab-inactive'"
+                                    role="tab"
+                                >
+                                    <span class="flex items-center gap-2">
+                                        失败
+                                        <span x-show="failedTasks.length > 0"
+                                              class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md bg-red-500 text-white min-w-[1.5rem] justify-center"
+                                              x-text="failedTasks.length"></span>
+                                    </span>
+                                </button>
             </nav>
         </div>
     </div>
