@@ -32,8 +32,10 @@ def _get_next_seq(date_str: str) -> int:
         else:
             data = {"date": date_str, "seq": 1}
         os.makedirs(os.path.dirname(_COUNTER_FILE), exist_ok=True)
-        with open(_COUNTER_FILE, "w") as f:
+        tmp = _COUNTER_FILE + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(data, f)
+        os.replace(tmp, _COUNTER_FILE)
         return data["seq"]
     except Exception as e:
         logger.warning(f"task_counter read/write error: {e}")
@@ -41,14 +43,21 @@ def _get_next_seq(date_str: str) -> int:
 
 
 def _set_seq(date_str: str, seq: int):
-    """Force-set the counter to at least `seq` for today.
+    """Set the counter to at least `seq` for today (only increases, never decreases).
     Thread-safe via _lock; caller must hold _lock.
     """
     try:
-        data = {"date": date_str, "seq": seq}
         os.makedirs(os.path.dirname(_COUNTER_FILE), exist_ok=True)
-        with open(_COUNTER_FILE, "w") as f:
+        if os.path.exists(_COUNTER_FILE):
+            with open(_COUNTER_FILE, "r") as f:
+                data = json.load(f)
+            if data.get("date") == date_str and data.get("seq", 0) >= seq:
+                return  # already larger, no overwrite
+        data = {"date": date_str, "seq": seq}
+        tmp = _COUNTER_FILE + ".tmp"
+        with open(tmp, "w") as f:
             json.dump(data, f)
+        os.replace(tmp, _COUNTER_FILE)
     except Exception as e:
         logger.warning(f"task_counter write error: {e}")
 
