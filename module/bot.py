@@ -1070,7 +1070,11 @@ async def direct_download(
         task_id=_bot.gen_task_id(),
     )
 
-    node.client = client
+    # node.client = client
+    # ↑ 注释掉以统一使用 HookClient（设置了 max_concurrent_transmissions=25 的 client），
+    #   让 worker 走 media_downloader.py:466 的 download_task(client, ...) 分支。
+    #   否则 bot handler 的 client 默认 max_concurrent_transmissions=1，导致单线程下载。
+    #   如需恢复旧行为，取消注释即可。
     node.source_chat_title = source_chat_title
     node.source_chat_id = source_chat_id
 
