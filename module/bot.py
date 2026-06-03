@@ -98,7 +98,6 @@ def _cleanup_stopped_task(node):
                     recorded += 1
                 # Delete the download progress entry (both incomplete and complete)
                 # to remove it from active/completed list in webui
-                _delete_download_progress(tid)
                 _delete_download_progress(f"{chat_id}_{msg_id}")
                 removed += 1
         if removed > 0:
@@ -147,7 +146,7 @@ def _record_pending_failures(node):
                 # Only catch entries that never started downloading
                 # (down_byte == 0 or down_byte == total_size with same timestamps
                 #  means Pyrogram progress callback never ran)
-                if value.get("down_byte", 0) < value.get("total_size", 1):
+                if value.get("down_byte", 0) < value.get("total_size", 1) and value.get("total_size", 0) > 0:
                     # Build source link
                     source_link = ""
                     source_chat_id = value.get("source_chat_id", 0) or getattr(node, 'source_chat_id', 0)
