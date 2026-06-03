@@ -94,6 +94,38 @@ def _cleanup_stopped_task(node):
         logger.warning(f"Failed to cleanup stopped task {node.task_id_display}: {e}")
 
 
+def _record_pending_failures(node):
+    """Record failed download_status entries that weren't caught by download_task.
+    
+    This catches edge cases where items were queued but never processed by worker
+    (e.g. task stopped right after add_download_task but before worker picked it up).
+    download_task already writes add_failed_download for each FailedDownload status,
+    so this only covers entries that never reached download_task.
+    """
+    try:
+        from module.download_stat import get_download_result
+        download_result = get_download_result()
+        recorded = 0
+        for chat_id, messages in list(download_result.items()):
+            for msg_id, value in list(messages.items()):
+                tid = str(value.get("task_id", ""))
+                if tid == str(node.task_id) or tid == str(node.task_id_display):
+                    if value.get("down_byte", 0) < value.get("total_size", 1):
+                        add_failed_download(
+                            chat_id=chat_id,
+                            msg_id=msg_id,
+                            task_id=str(node.task_id),
+                            file_name=value.get("file_name", ""),
+                            error_message="下载失败",
+                            total_size=value.get("total_size", 0),
+                        )
+                        recorded += 1
+        if recorded > 0:
+            logger.info(f"Recorded {recorded} pending failures for task {node.task_id_display}")
+    except Exception as e:
+        logger.warning(f"Failed to record pending failures for task {node.task_id_display}: {e}")
+
+
 class DownloadBot:
     """Download bot"""
 
@@ -162,6 +194,10 @@ class DownloadBot:
                     # If stopped by user, move download progress to failed list and clear data
                     if value.is_stop_transmission:
                         _cleanup_stopped_task(value)
+                    # Record any failed download_status entries that weren't caught by
+                    # download_task (e.g. messages that were queued but never processed)
+                    if not value.is_stop_transmission and value.failed_download_task > 0:
+                        _record_pending_failures(value)
                     complete_task(value.task_id)
                     self.remove_task_node(key)
             await asyncio.sleep(3)

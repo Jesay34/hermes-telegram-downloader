@@ -14,6 +14,7 @@ from rich.logging import RichHandler
 from module.app import Application, ChatDownloadConfig, DownloadStatus, TaskNode
 from module.bot import start_download_bot, stop_download_bot
 from module.download_stat import load_downloads, save_downloads, set_chat_title, update_download_status
+from module.download_stat import add_failed_download as _add_failed_download
 from module.task_store import update_task_progress, update_download_state
 from module.get_chat_history_v2 import get_chat_history_v2
 from module.language import _t
@@ -287,6 +288,16 @@ async def download_task(client: pyrogram.Client, message: pyrogram.types.Message
         app.set_download_id(node, message.id, download_status)
     node.download_status[message.id] = download_status
     file_size = os.path.getsize(file_name) if file_name else 0
+    # Record failed downloads to the failed list for webui display
+    if download_status is DownloadStatus.FailedDownload:
+        _add_failed_download(
+            chat_id=node.chat_id,
+            msg_id=message.id,
+            task_id=str(node.task_id),
+            file_name=file_name or "",
+            error_message="下载失败",
+            total_size=file_size,
+        )
     await upload_telegram_chat(
         client, node.upload_user if node.upload_user else client,
         app, node, message, download_status, file_name,
