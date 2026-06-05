@@ -245,7 +245,6 @@ class DownloadBot:
                     # download_task (e.g. messages that were queued but never processed)
                     if not value.is_stop_transmission and value.failed_download_task > 0:
                         _record_pending_failures(value)
-                    complete_task(value.task_id)
                     self.remove_task_node(key)
             await asyncio.sleep(3)
 
