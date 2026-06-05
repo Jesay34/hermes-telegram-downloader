@@ -276,6 +276,8 @@ async def download_thumbnail(
                         f"Failed to download thumbnail after {max_attempts}"
                         f" attempts: {e}"
                     )
+                    thumbnail = None
+                    thumbnail_file = None
                 else:
                     message = await fetch_message(client, message)
                     thumbnail = message.video.thumbs[0] if message.video.thumbs else None
@@ -286,9 +288,6 @@ async def download_thumbnail(
                     )
                     # Wait 2 seconds before retrying
                     await asyncio.sleep(2)
-
-                thumbnail = None
-                thumbnail_file = None
     return thumbnail_file
 
 
