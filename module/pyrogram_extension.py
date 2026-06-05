@@ -1179,6 +1179,7 @@ async def _report_bot_status(
 
         # Build completed files list
         completed_files_str = ""
+        failed_files_str = ""
         download_result = get_download_result()
         if node.chat_id in download_result:
             for idx, value in download_result[node.chat_id].items():
@@ -1187,24 +1188,67 @@ async def _report_bot_status(
                     fname = os.path.basename(value["file_name"])
                     fsize = format_byte(value["total_size"])
                     completed_files_str += f"  • {fname} ({fsize})\n"
+        # Build failed files list with error reasons (from _failed_downloads)
+        if node.failed_download_task > 0:
+            try:
+                from module.download_stat import get_failed_downloads
+                for f in get_failed_downloads():
+                    f_task_id = str(f.get("task_id", ""))
+                    if f_task_id == str(node.task_id) or f_task_id == str(node.task_id_display):
+                        fname = os.path.basename(f.get("file_name", ""))
+                        err = f.get("error_message", "未知错误")
+                        failed_files_str += f"  • {fname} — {err}\n"
+            except Exception:
+                pass
+        if failed_files_str:
+            failed_files_str = f"\n❌ {_t('Failed')}:\n" + failed_files_str
         if completed_files_str:
             completed_files_str = f"\n📄 {_t('Files')}:\n" + completed_files_str
+
+        # Re-count from _download_result for accuracy (avoids counter race conditions)
+        actual_total = 0
+        actual_success = 0
+        actual_failed = 0
+        for cid, msgs in download_result.items():
+            for mid, val in msgs.items():
+                if str(val.get("task_id", "")) == str(node.task_id):
+                    actual_total += 1
+                    if val["down_byte"] == val["total_size"] and val["total_size"] > 0:
+                        actual_success += 1
+        if node.failed_download_task > 0:
+            try:
+                for f in get_failed_downloads():
+                    f_tid = str(f.get("task_id", ""))
+                    if f_tid == str(node.task_id) or f_tid == str(node.task_id_display):
+                        actual_failed += 1
+            except Exception:
+                pass
+        if immediate_reply and (actual_total > 0 or actual_failed > 0):
+            display_total = actual_total + actual_failed
+            display_success = actual_success
+            display_failed = actual_failed
+            display_skipped = node.skip_download_task
+        else:
+            display_total = node.total_download_task
+            display_success = node.success_download_task
+            display_failed = node.failed_download_task
+            display_skipped = node.skip_download_task
 
         new_msg_str = (
             f"`\n"
             f"🆔 task: {node.task_id_display}\n"
-            f"📥 {_t('Downloading')}: {format_byte(node.total_download_byte)}\n"
-            f"├─ 📁 {_t('Total')}: {node.total_download_task}\n"
-            f"├─ ✅ {_t('Success')}: {node.success_download_task}\n"
-            f"├─ ❌ {_t('Failed')}: {node.failed_download_task}\n"
-            f"└─ ⏩ {_t('Skipped')}: {node.skip_download_task}\n"
+                        f"📥 {_t('Downloading')}\n"
+                        f"├─ 📁 {_t('Total')}: {display_total}\n"
+                        f"├─ ✅ {_t('Success')}: {display_success}\n"
+                        f"├─ ❌ {_t('Failed')}: {display_failed}\n"
+                        f"└─ ⏩ {_t('Skipped')}: {display_skipped}\n"
             f"{node.forward_msg_detail_str}"
             f"{upload_msg_detail_str}"
             f"{upload_result_str}"
             f"{download_result_str}"
-            f"{completed_files_str}\n`"
+            f"{completed_files_str}"
+            f"{failed_files_str}\n`"
         )
-
         if new_msg_str != node.last_edit_msg:
             # Throttle: only update every 20% progress using byte-level progress
             if not immediate_reply:
