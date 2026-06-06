@@ -1277,8 +1277,10 @@ async def _report_bot_status(
                 prev_bucket = (node.last_progress_pct // 20) * 20 if node.last_progress_pct >= 0 else -1
                 if bucket == prev_bucket and node.last_progress_pct >= 0:
                     node.last_progress_pct = current_pct
+                    logger.debug(f"Throttled: task {node.task_id_display} pct={current_pct}% bucket={bucket} prev={prev_bucket}")
                     return
                 node.last_progress_pct = current_pct
+                logger.debug(f"Editing: task {node.task_id_display} pct={current_pct}% bucket={bucket} prev={prev_bucket}")
 
             try:
                 await client.edit_message_text(

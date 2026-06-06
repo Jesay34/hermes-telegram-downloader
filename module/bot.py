@@ -232,8 +232,11 @@ class DownloadBot:
         """Update reply message"""
         while self.is_running:
             for key, value in self.task_node.copy().items():
-                if value.is_running:
+                # Skip tasks that haven't sent their initial message yet
+                if value.is_running and not getattr(value, '_skip_next_report', False):
                     await report_bot_status(self.bot, value)
+                elif getattr(value, '_skip_next_report', False):
+                    value._skip_next_report = False
 
             for key, value in self.task_node.copy().items():
                 if value.is_running and value.is_finish():
@@ -382,6 +385,7 @@ class DownloadBot:
                     node.reply_message_id = recovery_msg.id
                     node.last_edit_msg = initial_msg
                     node.is_running = True
+                    node._skip_next_report = True  # Let recovery send progress msg before loop edits
                 except Exception as e:
                     logger.warning(f"Failed to send recovery notification: {e}")
 
@@ -477,38 +481,40 @@ class DownloadBot:
                             dr = get_download_result()
                             if node.chat_id in dr:
                                 for _v in dr[node.chat_id].values():
-                                    if str(_v.get("task_id")) == str(node.task_id) and _v.get("down_byte", 0) > 0:
-                                        try:
-                                            # Delete recovery notification
-                                            if node.reply_message_id:
-                                                await self.bot.delete_messages(node.from_user_id, node.reply_message_id)
-                                            # Build progress message
-                                            fname = os.path.basename(_v.get("file_name", ""))
-                                            total = _v.get("total_size", 0)
-                                            down = _v.get("down_byte", 0)
-                                            pct = int(down / total * 100) if total > 0 else 0
-                                            speed = _v.get("download_speed", 0)
-                                            from utils.format import format_byte, create_progress_bar
-                                            progress_msg = (
-                                                f"`\n"
-                                                f"🆔 task: {node.task_id_display}\n"
-                                                f" ├─ 📁 : {fname}\n"
-                                                f" ├─ 📏 : {format_byte(total)}\n"
-                                                f" ├─ ⏬ : {format_byte(speed)}/s\n"
-                                                f" └─ 📊 : [{create_progress_bar(pct)}] ({pct}%)\n`"
-                                            )
-                                            new_msg = await self.bot.send_message(
-                                                node.from_user_id, progress_msg,
-                                                parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
-                                            )
-                                            node.reply_message_id = new_msg.id
-                                            node.last_edit_msg = progress_msg
-                                            node.last_progress_pct = pct
-                                            node.last_reply_time = time.time()
-                                        except Exception as e:
-                                            logger.warning(f"Recovery: failed progress update for task {node.task_id_display}: {e}")
-                                        initial_reported = True
-                                        break
+                                    if str(_v.get("task_id")) != str(node.task_id):
+                                        continue
+                                    if _v.get("down_byte", 0) <= 0:
+                                        continue
+                                    try:
+                                        if node.reply_message_id:
+                                            await self.bot.delete_messages(node.from_user_id, node.reply_message_id)
+                                        fname = os.path.basename(_v.get("file_name", ""))
+                                        total = _v.get("total_size", 0)
+                                        down = _v.get("down_byte", 0)
+                                        pct = int(down / total * 100) if total > 0 else 0
+                                        speed = _v.get("download_speed", 0)
+                                        from utils.format import format_byte, create_progress_bar
+                                        progress_msg = (
+                                            f"`\n"
+                                            f"🆔 task: {node.task_id_display}\n"
+                                            f" ├─ 📁 : {fname}\n"
+                                            f" ├─ 📏 : {format_byte(total)}\n"
+                                            f" ├─ ⏬ : {format_byte(speed)}/s\n"
+                                            f" └─ 📊 : [{create_progress_bar(pct)}] ({pct}%)\n`"
+                                        )
+                                        new_msg = await self.bot.send_message(
+                                            node.from_user_id, progress_msg,
+                                            parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
+                                        )
+                                        node.reply_message_id = new_msg.id
+                                        node.last_edit_msg = progress_msg
+                                        node.last_progress_pct = -1  # Reset so next 20% bucket edit always triggers
+                                        node.last_reply_time = time.time()
+                                        logger.info(f"Recovery: sent progress for task {node.task_id_display} ({pct}%)")
+                                    except Exception as e:
+                                        logger.warning(f"Recovery: failed progress update for task {node.task_id_display}: {e}")
+                                    initial_reported = True
+                                    break
                         if node.is_stop_transmission:
                             break
                 else:
