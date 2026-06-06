@@ -362,21 +362,25 @@ class DownloadBot:
             node.source_chat_id = source_chat_id_extra
 
             state_label = "中断" if download_state == "downloading" else "待执行"
-            # Notify user
+            # Notify user with initial progress-format message
             if from_user_id and self.bot:
                 try:
                     from module.download_stat import get_chat_title
                     chat_title = get_chat_title(chat_id) or str(chat_id)
                     type_label = "转发" if task_type == "forward" else "下载"
+                    initial_msg = (
+                        f"`\n"
+                        f"🆔 task: {node.task_id_display}\n"
+                        f"🔄 恢复{state_label}任务 ({type_label})\n"
+                        f"群组: {chat_title}\n`"
+                    )
                     recovery_msg = await self.bot.send_message(
                         from_user_id,
-                        f"🔄 恢复{state_label}任务 task: {node.task_id_display}\n"
-                        f"群组: {chat_title}\n"
-                        f"类型: {type_label}\n"
-                        f"⚙️ 正在恢复中...",
+                        initial_msg,
+                        parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
                     )
                     node.reply_message_id = recovery_msg.id
-                    node.reply_message = recovery_msg.text
+                    node.last_edit_msg = initial_msg
                     node.is_running = True
                 except Exception as e:
                     logger.warning(f"Failed to send recovery notification: {e}")
@@ -478,8 +482,9 @@ class DownloadBot:
                                             from module.pyrogram_extension import report_bot_status
                                             node.last_reply_time = 0
                                             await report_bot_status(self.bot, node)
-                                        except Exception:
-                                            pass
+                                            logger.info(f"Recovery: sent initial progress report for task {node.task_id_display}")
+                                        except Exception as e:
+                                            logger.warning(f"Recovery: failed progress report for task {node.task_id_display}: {e}")
                                         initial_reported = True
                                         break
                         if node.is_stop_transmission:
