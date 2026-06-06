@@ -471,7 +471,7 @@ class DownloadBot:
                     initial_reported = False
                     while node.total_task == 0 or node.total_download_task < node.total_task:
                         await asyncio.sleep(3)
-                        # Once download progress data exists, immediately update bot message
+                        # Once download progress data exists, delete old msg and send new one with progress
                         if not initial_reported:
                             from module.download_stat import get_download_result
                             dr = get_download_result()
@@ -479,12 +479,34 @@ class DownloadBot:
                                 for _v in dr[node.chat_id].values():
                                     if str(_v.get("task_id")) == str(node.task_id) and _v.get("down_byte", 0) > 0:
                                         try:
-                                            from module.pyrogram_extension import report_bot_status
-                                            node.last_reply_time = 0
-                                            await report_bot_status(self.bot, node)
-                                            logger.info(f"Recovery: sent initial progress report for task {node.task_id_display}")
+                                            # Delete recovery notification
+                                            if node.reply_message_id:
+                                                await self.bot.delete_messages(node.from_user_id, node.reply_message_id)
+                                            # Build progress message
+                                            fname = os.path.basename(_v.get("file_name", ""))
+                                            total = _v.get("total_size", 0)
+                                            down = _v.get("down_byte", 0)
+                                            pct = int(down / total * 100) if total > 0 else 0
+                                            speed = _v.get("download_speed", 0)
+                                            from utils.format import format_byte, create_progress_bar
+                                            progress_msg = (
+                                                f"`\n"
+                                                f"🆔 task: {node.task_id_display}\n"
+                                                f" ├─ 📁 : {fname}\n"
+                                                f" ├─ 📏 : {format_byte(total)}\n"
+                                                f" ├─ ⏬ : {format_byte(speed)}/s\n"
+                                                f" └─ 📊 : [{create_progress_bar(pct)}] ({pct}%)\n`"
+                                            )
+                                            new_msg = await self.bot.send_message(
+                                                node.from_user_id, progress_msg,
+                                                parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
+                                            )
+                                            node.reply_message_id = new_msg.id
+                                            node.last_edit_msg = progress_msg
+                                            node.last_progress_pct = pct
+                                            node.last_reply_time = time.time()
                                         except Exception as e:
-                                            logger.warning(f"Recovery: failed progress report for task {node.task_id_display}: {e}")
+                                            logger.warning(f"Recovery: failed progress update for task {node.task_id_display}: {e}")
                                         initial_reported = True
                                         break
                         if node.is_stop_transmission:
