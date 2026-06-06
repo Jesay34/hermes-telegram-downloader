@@ -1140,8 +1140,11 @@ async def _report_bot_status(
         if node.chat_id in download_result:
             messages = download_result[node.chat_id]
             for idx, value in messages.items():
-                task_id = value["task_id"]
-                if task_id != node.task_id or value["down_byte"] == value["total_size"]:
+                task_id = str(value["task_id"])
+                task_id_display = str(value.get("task_id_display", ""))
+                my_tid = str(node.task_id)
+                my_display = str(node.task_id_display)
+                if (task_id != my_tid and task_id != my_display and task_id_display != my_tid and task_id_display != my_display) or value["down_byte"] == value["total_size"]:
                     continue
 
                 temp_file_name = os.path.basename(value["file_name"])
@@ -1270,12 +1273,10 @@ async def _report_bot_status(
                             ts = value.get("total_size", 0)
                             if ts > 0:
                                 total += ts
-                                weighted += value.get("down_byte", 0)
-                if total > 0:
-                    current_pct = int(weighted / total * 100)
-                # NOTE: 20% bucket throttle removed. update_reply_message 3s polling
-                # is the throttle. Two throttles (this + download_stat.py) conflict
-                # and prevent progress updates in the first 20% after recovery.
+                # NOTE: 20% bucket throttle removed
+                prev_bucket = (node.last_progress_pct // 20) * 20 if node.last_progress_pct >= 0 else -1
+                if bucket == prev_bucket and node.last_progress_pct >= 0:
+                    return  # Don't update last_progress_pct — only update on actual edit
             try:
                 await client.edit_message_text(
                     node.from_user_id,
