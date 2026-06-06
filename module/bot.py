@@ -473,7 +473,7 @@ class DownloadBot:
                             dr = get_download_result()
                             if node.chat_id in dr:
                                 for _v in dr[node.chat_id].values():
-                                    if _v.get("down_byte", 0) > 0:
+                                    if str(_v.get("task_id")) == str(node.task_id) and _v.get("down_byte", 0) > 0:
                                         try:
                                             from module.pyrogram_extension import report_bot_status
                                             node.last_reply_time = 0
