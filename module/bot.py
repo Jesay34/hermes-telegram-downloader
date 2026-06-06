@@ -1338,10 +1338,20 @@ async def direct_download(
     node.is_running = True
 
     # Immediately update bot message to show initial 0% progress
+    # Only if we have actual progress data (direct_download adds initial entry)
     try:
+        from module.download_stat import get_download_result
         from module.pyrogram_extension import report_bot_status
-        node.last_reply_time = 0  # Reset cooldown so can_reply() allows immediate update
-        await report_bot_status(node.bot, node)
+        dr = get_download_result()
+        has_data = False
+        if node.chat_id in dr:
+            for _v in dr[node.chat_id].values():
+                if str(_v.get("task_id")) == str(node.task_id) and _v.get("total_size", 0) > 0:
+                    has_data = True
+                    break
+        if has_data:
+            node.last_reply_time = 0
+            await report_bot_status(node.bot, node)
     except Exception as e:
         logger.warning(f"Failed to send initial progress report: {e}")
 
