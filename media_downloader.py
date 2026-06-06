@@ -333,13 +333,18 @@ async def download_task(client: pyrogram.Client, message: pyrogram.types.Message
         if await app.upload_file(file_name, update_cloud_upload_stat, (node, message.id, ui_file_name)):
             node.upload_success_count += 1
     await report_bot_download_status(node.bot, node, download_status, file_size)
-    # Immediately mark task as complete if all files done (avoid relying on timer loop)
+    # Send final status with full stats immediately for single downloads
     if node.bot and node.is_finish() and not node.is_stop_transmission:
+        from module.pyrogram_extension import report_bot_status
+        try:
+            await report_bot_status(node.bot, node, immediate_reply=True)
+        except Exception:
+            pass
         try:
             from module.task_store import complete_task as _ct
             _ct(node.task_id)
         except Exception as e:
-                    logger.warning(f"Failed to complete task {node.task_id}: {e}")
+            logger.warning(f"Failed to complete task {node.task_id}: {e}")
 
 
 @record_download_status
