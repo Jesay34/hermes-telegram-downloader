@@ -1319,7 +1319,8 @@ async def direct_download(
     # Immediately update bot message to show initial 0% progress
     try:
         from module.pyrogram_extension import report_bot_status
-        await report_bot_status(node.bot, node, immediate_reply=True)
+        node.last_reply_time = 0  # Reset cooldown so can_reply() allows immediate update
+        await report_bot_status(node.bot, node)
     except Exception as e:
         logger.warning(f"Failed to send initial progress report: {e}")
 
