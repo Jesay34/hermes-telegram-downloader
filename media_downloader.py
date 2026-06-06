@@ -338,8 +338,8 @@ async def download_task(client: pyrogram.Client, message: pyrogram.types.Message
         from module.pyrogram_extension import report_bot_status
         try:
             await report_bot_status(node.bot, node, immediate_reply=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to send final bot status for task {node.task_id}: {e}")
         try:
             from module.task_store import complete_task as _ct
             _ct(node.task_id)
@@ -394,7 +394,9 @@ async def download_media(
                         )
                         return DownloadStatus.SkipDownload, None, ""
                     elif file_size > 0:
-                        os.remove(file_name)
+                        # 先重命名原文件为 .bak，下载成功后再删除备份
+                        backup_path = file_name + ".bak"
+                        os.replace(file_name, backup_path)
                         logger.info(
                             f"id={message.id} {ui_file_name} "
                             f"{_t('File exists but size mismatch')}: "
@@ -429,6 +431,7 @@ async def download_media(
             source_link = f"https://t.me/c/{link_id}/{message.id}"
 
     message_id = message.id
+    total_wait = 0
     for retry in range(3):
         try:
             temp_download_path = await client.download_media(
@@ -440,6 +443,13 @@ async def download_media(
                 _check_download_finish(media_size, temp_download_path, ui_file_name)
                 await asyncio.sleep(0.5)
                 _move_to_download_path(temp_download_path, file_name)
+                # 清除 .bak 备份（下载成功）
+                bak_path = file_name + ".bak"
+                if os.path.exists(bak_path):
+                    try:
+                        os.remove(bak_path)
+                    except OSError:
+                        pass
                 return DownloadStatus.SuccessDownload, file_name, ""
         except pyrogram.errors.exceptions.bad_request_400.BadRequest:
             _cleanup_temp_file(temp_file_name)
@@ -456,8 +466,16 @@ async def download_media(
                 error_message = "文件引用过期（重试3次后失败）"
         except pyrogram.errors.exceptions.flood_420.FloodWait as wait_err:
             _cleanup_temp_file(temp_file_name)
+            # 累计 FloodWait 超过600 秒则不再等待
+            total_wait += wait_err.value
+            if total_wait > 600:
+                logger.error(
+                    f"Message[{message.id}]: {_t('FloodWait total timeout exceeded, download skipped.')}"
+                )
+                error_message = f"频率限制总超时，累计等待{total_wait}秒"
+                break
             await asyncio.sleep(wait_err.value)
-            logger.info("Message[{}]: FlowWait {}s, waiting", message.id, wait_err.value)
+            logger.info("Message[{}]: FlowWait {}s, waiting (total={}s)", message.id, wait_err.value, total_wait)
             error_message = f"频率限制，等待{wait_err.value}秒"
             _check_timeout(retry, message.id)
         except TypeError:

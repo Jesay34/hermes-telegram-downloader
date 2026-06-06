@@ -62,8 +62,8 @@ def remove_download_cache(chat_id, message_id):
     """Remove a specific entry from download cache."""
     try:
         _download_cache.store.pop((chat_id, message_id), None)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to remove download cache ({chat_id}, {message_id}): {e}")
 
 
 def _guess_mime_type(filename: str) -> Optional[str]:
@@ -1200,9 +1200,8 @@ async def _report_bot_status(
                         fname = os.path.basename(f.get("file_name", ""))
                         err = f.get("error_message", "未知错误")
                         failed_files_str += f"  • {fname} — {err}\n"
-            except Exception:
-                pass
-        if failed_files_str:
+            except Exception as e:
+                logger.warning(f"Failed to read failed download data for status report: {e}")
             failed_files_str = f"\n❌ {_t('Failed')}:\n" + failed_files_str
         if completed_files_str:
             completed_files_str = f"\n📄 {_t('Files')}:\n" + completed_files_str
@@ -1223,8 +1222,8 @@ async def _report_bot_status(
                     f_tid = str(f.get("task_id", ""))
                     if f_tid == str(node.task_id) or f_tid == str(node.task_id_display):
                         actual_failed += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to get failed downloads for re-count: {e}")
         if immediate_reply and (actual_total > 0 or actual_failed > 0):
             display_total = actual_total + actual_failed
             display_success = actual_success
@@ -1404,9 +1403,8 @@ async def check_user_permission(
         return member and (
             not member.permissions or member.permissions.can_send_media_messages
         )
-    except Exception:
-        # logger.exception(e)
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to check user permission: {e}")
 
     return False
 

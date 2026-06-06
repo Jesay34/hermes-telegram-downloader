@@ -27,6 +27,13 @@ _paused_tasks: set = set()
 _cancelled_tasks: set = set()
 _failed_downloads: list = []
 _chat_titles: dict = {}  # chat_id -> chat_title mapping
+_download_lock: asyncio.Lock = asyncio.Lock()  # 保护 _download_result / _total_download_speed / _failed_downloads 等全局变量的并发访问
+
+# Helper: asyncio.Lock can't be used from sync contexts; provide a try-lock wrapper
+# for sync functions that are also called from async context.
+# Strategy: sync functions that read/write shared state use a reentrant-compatible
+# pattern via _sync_lock.
+_sync_lock = __import__('threading').Lock()  # 用于同步上下文的写入保护
 
 
 def get_download_result() -> dict:
@@ -76,17 +83,18 @@ def delete_task(task_id) -> bool:
     Also cancels the download so it doesn't reappear."""
     task_id_str = str(task_id)
     _cancelled_tasks.add(task_id_str)
-    for chat_id, messages in list(_download_result.items()):
-        for msg_id, value in list(messages.items()):
-            composite_key = f"{chat_id}_{msg_id}"
-            if composite_key == task_id_str or str(value.get("task_id", "")) == task_id_str:
-                _cancelled_tasks.add(composite_key)
-                _cancelled_tasks.add(str(value.get("task_id", "")))
-                del _download_result[chat_id][msg_id]
-                if not _download_result[chat_id]:
-                    del _download_result[chat_id]
-                save_downloads()
-                return True
+    with _sync_lock:
+        for chat_id, messages in list(_download_result.items()):
+            for msg_id, value in list(messages.items()):
+                composite_key = f"{chat_id}_{msg_id}"
+                if composite_key == task_id_str or str(value.get("task_id", "")) == task_id_str:
+                    _cancelled_tasks.add(composite_key)
+                    _cancelled_tasks.add(str(value.get("task_id", "")))
+                    del _download_result[chat_id][msg_id]
+                    if not _download_result[chat_id]:
+                        del _download_result[chat_id]
+                    save_downloads()
+                    return True
     return False
 
 
@@ -95,20 +103,21 @@ def add_failed_download(chat_id, msg_id, task_id, file_name, error_message, tota
     # Remove existing entry with same (chat_id, msg_id) to deduplicate
     global _failed_downloads
     composite_key = f"{chat_id}_{msg_id}"
-    _failed_downloads = [
-        f for f in _failed_downloads
-        if f"{f.get('chat_id', '')}_{f.get('msg_id', '')}" != composite_key
-    ]
-    _failed_downloads.append({
-        "chat_id": chat_id,
-        "msg_id": msg_id,
-        "task_id": str(task_id),
-        "file_name": file_name,
-        "error_message": error_message,
-        "total_size": total_size,
-        "source_link": source_link,
-        "timestamp": time.time(),
-    })
+    with _sync_lock:
+        _failed_downloads = [
+            f for f in _failed_downloads
+            if f"{f.get('chat_id', '')}_{f.get('msg_id', '')}" != composite_key
+        ]
+        _failed_downloads.append({
+            "chat_id": chat_id,
+            "msg_id": msg_id,
+            "task_id": str(task_id),
+            "file_name": file_name,
+            "error_message": error_message,
+            "total_size": total_size,
+            "source_link": source_link,
+            "timestamp": time.time(),
+        })
     save_downloads()  # 失败时立即持久化
 
 
@@ -135,11 +144,12 @@ def get_all_chat_titles() -> dict:
 def remove_failed_download(task_id) -> bool:
     """Remove a failed download entry by task_id"""
     global _failed_downloads
-    before = len(_failed_downloads)
-    _failed_downloads = [
-        f for f in _failed_downloads if str(f.get("task_id", "")) != str(task_id)
-    ]
-    return len(_failed_downloads) < before
+    with _sync_lock:
+        before = len(_failed_downloads)
+        _failed_downloads = [
+            f for f in _failed_downloads if str(f.get("task_id", "")) != str(task_id)
+        ]
+        return len(_failed_downloads) < before
 
 
 def batch_delete_tasks(task_ids: list) -> int:
@@ -154,52 +164,56 @@ def batch_delete_tasks(task_ids: list) -> int:
 def batch_delete_failed(task_ids: list) -> int:
     """Delete multiple failed downloads. Returns count deleted."""
     global _failed_downloads
-    before = len(_failed_downloads)
-    task_id_set = {str(tid) for tid in task_ids}
-    _failed_downloads = [
-        f for f in _failed_downloads if str(f.get("task_id", "")) not in task_id_set
-    ]
-    return before - len(_failed_downloads)
+    with _sync_lock:
+        before = len(_failed_downloads)
+        task_id_set = {str(tid) for tid in task_ids}
+        _failed_downloads = [
+            f for f in _failed_downloads if str(f.get("task_id", "")) not in task_id_set
+        ]
+        return before - len(_failed_downloads)
 
 
 def clear_completed_downloads():
     """Clear completed downloads from result (keep only active)"""
-    for chat_id, messages in list(_download_result.items()):
-        for msg_id, value in list(messages.items()):
-            if value["down_byte"] == value["total_size"]:
-                del _download_result[chat_id][msg_id]
-        if not _download_result[chat_id]:
-            del _download_result[chat_id]
+    with _sync_lock:
+        for chat_id, messages in list(_download_result.items()):
+            for msg_id, value in list(messages.items()):
+                if value["down_byte"] == value["total_size"]:
+                    del _download_result[chat_id][msg_id]
+            if not _download_result[chat_id]:
+                del _download_result[chat_id]
 
 
 def _reset_task_speed(task_id):
     """Reset download speed for a specific task to 0.
     Supports both composite key (chat_id_msg_id) and numeric task_id."""
     global _total_download_speed
-    for chat_id, messages in _download_result.items():
-        for msg_id, value in messages.items():
-            composite_key = f"{chat_id}_{msg_id}"
-            if composite_key == str(task_id) or str(value.get("task_id", "")) == str(task_id):
-                value["download_speed"] = 0
-    # Recalculate total speed from remaining active tasks
-    total = 0
-    for chat_id, messages in _download_result.items():
-        for msg_id, value in messages.items():
-            composite_key = f"{chat_id}_{msg_id}"
-            if not (is_task_paused(composite_key) or is_task_paused(value.get("task_id", ""))):
-                total += value.get("download_speed", 0)
-    _total_download_speed = total
+    with _sync_lock:
+        for chat_id, messages in _download_result.items():
+            for msg_id, value in messages.items():
+                composite_key = f"{chat_id}_{msg_id}"
+                if composite_key == str(task_id) or str(value.get("task_id", "")) == str(task_id):
+                    value["download_speed"] = 0
+        # Recalculate total speed from remaining active tasks
+        total = 0
+        for chat_id, messages in _download_result.items():
+            for msg_id, value in messages.items():
+                composite_key = f"{chat_id}_{msg_id}"
+                if not (is_task_paused(composite_key) or is_task_paused(value.get("task_id", ""))):
+                    total += value.get("download_speed", 0)
+        _total_download_speed = total
 
 
 def _check_and_reset_global_speed():
     """Reset global speed if no active (non-paused) tasks are downloading"""
     global _total_download_speed
-    for chat_id, messages in _download_result.items():
-        for msg_id, value in messages.items():
-            composite_key = f"{chat_id}_{msg_id}"
-            if not (is_task_paused(composite_key) or is_task_paused(value.get("task_id", ""))):
-                return  # There are active tasks, don't reset
-    _total_download_speed = 0
+    with _sync_lock:
+        for chat_id, messages in _download_result.items():
+            for msg_id, value in messages.items():
+                composite_key = f"{chat_id}_{msg_id}"
+                if not (is_task_paused(composite_key) or is_task_paused(value.get("task_id", ""))):
+                    return  # There are active tasks, don't reset
+        _total_download_speed = 0
 
 
 async def update_download_status(
@@ -244,66 +258,67 @@ async def update_download_status(
             client.stop_transmission()
         await asyncio.sleep(1)
 
-    if not _download_result.get(chat_id):
-        _download_result[chat_id] = {}
+    async with _download_lock:
+        if not _download_result.get(chat_id):
+            _download_result[chat_id] = {}
 
-    if _download_result[chat_id].get(message_id):
-        last_download_byte = _download_result[chat_id][message_id]["down_byte"]
-        last_time = _download_result[chat_id][message_id]["end_time"]
-        download_speed = _download_result[chat_id][message_id]["download_speed"]
-        each_second_total_download = _download_result[chat_id][message_id][
-            "each_second_total_download"
-        ]
-        end_time = _download_result[chat_id][message_id]["end_time"]
+        if _download_result[chat_id].get(message_id):
+            last_download_byte = _download_result[chat_id][message_id]["down_byte"]
+            last_time = _download_result[chat_id][message_id]["end_time"]
+            download_speed = _download_result[chat_id][message_id]["download_speed"]
+            each_second_total_download = _download_result[chat_id][message_id][
+                "each_second_total_download"
+            ]
+            end_time = _download_result[chat_id][message_id]["end_time"]
 
-        _total_download_size += down_byte - last_download_byte
-        each_second_total_download += down_byte - last_download_byte
+            _total_download_size += down_byte - last_download_byte
+            each_second_total_download += down_byte - last_download_byte
 
-        if cur_time - last_time >= 1.0:
-            download_speed = int(each_second_total_download / (cur_time - last_time))
-            end_time = cur_time
-            each_second_total_download = 0
+            if cur_time - last_time >= 1.0:
+                download_speed = int(each_second_total_download / (cur_time - last_time))
+                end_time = cur_time
+                each_second_total_download = 0
 
-        download_speed = max(download_speed, 0)
+            download_speed = max(download_speed, 0)
 
-        _download_result[chat_id][message_id]["down_byte"] = down_byte
-        _download_result[chat_id][message_id]["end_time"] = end_time
-        _download_result[chat_id][message_id]["download_speed"] = download_speed
-        _download_result[chat_id][message_id][
-            "each_second_total_download"
-        ] = each_second_total_download
+            _download_result[chat_id][message_id]["down_byte"] = down_byte
+            _download_result[chat_id][message_id]["end_time"] = end_time
+            _download_result[chat_id][message_id]["download_speed"] = download_speed
+            _download_result[chat_id][message_id][
+                "each_second_total_download"
+            ] = each_second_total_download
 
-        # Mark completion time when download finishes
-        if down_byte >= total_size and total_size > 0:
-            _download_result[chat_id][message_id]["end_time"] = cur_time
-            _download_result[chat_id][message_id]["download_speed"] = 0
-            # Recalculate total speed from remaining active tasks
-            _total = 0
-            for _cid, _msgs in list(_download_result.items()):
-                for _mid, _val in list(_msgs.items()):
-                    _ckey = f"{_cid}_{_mid}"
-                    if not (is_task_paused(_ckey) or is_task_paused(_val.get("task_id", ""))):
-                        _total += _val.get("download_speed", 0)
-            _total_download_speed = _total
-            # 下载完成时立即持久化
-            save_downloads()
-    else:
-        each_second_total_download = down_byte
-        _download_result[chat_id][message_id] = {
-            "down_byte": down_byte,
-            "total_size": total_size,
-            "file_name": file_name,
-            "start_time": start_time,
-            "end_time": cur_time,
-            "download_speed": down_byte / max(cur_time - start_time, 0.001),
-            "each_second_total_download": each_second_total_download,
-            "task_id": node.task_id,
-            "task_id_display": getattr(node, "task_id_display", ""),
-            "source_chat_title": getattr(node, "source_chat_title", ""),
-            "source_chat_id": getattr(node, "source_chat_id", 0),
-            "source_message_id": getattr(node, "source_message_id", 0),
-        }
-        _total_download_size += down_byte
+            # Mark completion time when download finishes
+            if down_byte >= total_size and total_size > 0:
+                _download_result[chat_id][message_id]["end_time"] = cur_time
+                _download_result[chat_id][message_id]["download_speed"] = 0
+                # Recalculate total speed from remaining active tasks
+                _total = 0
+                for _cid, _msgs in list(_download_result.items()):
+                    for _mid, _val in list(_msgs.items()):
+                        _ckey = f"{_cid}_{_mid}"
+                        if not (is_task_paused(_ckey) or is_task_paused(_val.get("task_id", ""))):
+                            _total += _val.get("download_speed", 0)
+                _total_download_speed = _total
+                # 下载完成时立即持久化
+                save_downloads()
+        else:
+            each_second_total_download = down_byte
+            _download_result[chat_id][message_id] = {
+                "down_byte": down_byte,
+                "total_size": total_size,
+                "file_name": file_name,
+                "start_time": start_time,
+                "end_time": cur_time,
+                "download_speed": down_byte / max(cur_time - start_time, 0.001),
+                "each_second_total_download": each_second_total_download,
+                "task_id": node.task_id,
+                "task_id_display": getattr(node, "task_id_display", ""),
+                "source_chat_title": getattr(node, "source_chat_title", ""),
+                "source_chat_id": getattr(node, "source_chat_id", 0),
+                "source_message_id": getattr(node, "source_message_id", 0),
+            }
+            _total_download_size += down_byte
 
     # Send initial progress report when download first starts
     if node.bot and not node.initial_progress_reported and down_byte > 0:
@@ -371,8 +386,11 @@ def save_downloads():
         }
 
         os.makedirs(os.path.dirname(_HISTORY_FILE), exist_ok=True)
-        with open(_HISTORY_FILE, "w", encoding="utf-8") as f:
+        # 原子写入：先写 .tmp 再 rename
+        tmp_file = _HISTORY_FILE + ".tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_file, _HISTORY_FILE)
         logger.info(f"Saved {len(completed)} completed, {len(_failed_downloads)} failed downloads")
     except Exception as e:
         logger.warning(f"Failed to save download history: {e}")

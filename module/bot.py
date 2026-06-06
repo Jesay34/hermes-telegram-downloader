@@ -682,8 +682,8 @@ class DownloadBot:
 
         try:
             await send_help_str(self.bot, admin.id)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to send help message: {e}")
 
         self.reply_task = _bot.app.loop.create_task(_bot.update_reply_message())
 
@@ -1312,8 +1312,8 @@ async def direct_download(
                         "source_chat_id": source_chat_id,
                         "source_message_id": source_message_id,
                     }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to insert initial download progress: {e}")
 
     node.is_running = True
 
