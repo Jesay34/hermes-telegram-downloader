@@ -232,11 +232,8 @@ class DownloadBot:
         """Update reply message"""
         while self.is_running:
             for key, value in self.task_node.copy().items():
-                # Skip tasks that haven't sent their initial message yet
-                if value.is_running and not getattr(value, '_skip_next_report', False):
+                if value.is_running:
                     await report_bot_status(self.bot, value)
-                elif getattr(value, '_skip_next_report', False):
-                    value._skip_next_report = False
 
             for key, value in self.task_node.copy().items():
                 if value.is_running and value.is_finish():
@@ -365,12 +362,13 @@ class DownloadBot:
             node.source_chat_id = source_chat_id_extra
 
             state_label = "中断" if download_state == "downloading" else "待执行"
-            # Notify user with initial progress-format message
+            # Don't send notification - let update_reply_message handle it
             if from_user_id and self.bot:
                 try:
                     from module.download_stat import get_chat_title
                     chat_title = get_chat_title(chat_id) or str(chat_id)
                     type_label = "转发" if task_type == "forward" else "下载"
+                    # Send initial message in progress format
                     initial_msg = (
                         f"`\n"
                         f"🆔 task: {node.task_id_display}\n"
@@ -384,8 +382,8 @@ class DownloadBot:
                     )
                     node.reply_message_id = recovery_msg.id
                     node.last_edit_msg = initial_msg
+                    node.last_progress_pct = -1  # First 20% bucket edit always triggers
                     node.is_running = True
-                    node._skip_next_report = True  # Let recovery send progress msg before loop edits
                 except Exception as e:
                     logger.warning(f"Failed to send recovery notification: {e}")
 
@@ -472,49 +470,8 @@ class DownloadBot:
                     await self.add_download_task(msg, node)
                     node.is_running = True
                     # Wait for download to finish (no timeout — large files may take hours)
-                    initial_reported = False
                     while node.total_task == 0 or node.total_download_task < node.total_task:
                         await asyncio.sleep(3)
-                        # Once download progress data exists, delete old msg and send new one with progress
-                        if not initial_reported:
-                            from module.download_stat import get_download_result
-                            dr = get_download_result()
-                            if node.chat_id in dr:
-                                for _v in dr[node.chat_id].values():
-                                    if str(_v.get("task_id")) != str(node.task_id):
-                                        continue
-                                    if _v.get("down_byte", 0) <= 0:
-                                        continue
-                                    try:
-                                        if node.reply_message_id:
-                                            await self.bot.delete_messages(node.from_user_id, node.reply_message_id)
-                                        fname = os.path.basename(_v.get("file_name", ""))
-                                        total = _v.get("total_size", 0)
-                                        down = _v.get("down_byte", 0)
-                                        pct = int(down / total * 100) if total > 0 else 0
-                                        speed = _v.get("download_speed", 0)
-                                        from utils.format import format_byte, create_progress_bar
-                                        progress_msg = (
-                                            f"`\n"
-                                            f"🆔 task: {node.task_id_display}\n"
-                                            f" ├─ 📁 : {fname}\n"
-                                            f" ├─ 📏 : {format_byte(total)}\n"
-                                            f" ├─ ⏬ : {format_byte(speed)}/s\n"
-                                            f" └─ 📊 : [{create_progress_bar(pct)}] ({pct}%)\n`"
-                                        )
-                                        new_msg = await self.bot.send_message(
-                                            node.from_user_id, progress_msg,
-                                            parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
-                                        )
-                                        node.reply_message_id = new_msg.id
-                                        node.last_edit_msg = progress_msg
-                                        node.last_progress_pct = -1  # Reset so next 20% bucket edit always triggers
-                                        node.last_reply_time = time.time()
-                                        logger.info(f"Recovery: sent progress for task {node.task_id_display} ({pct}%)")
-                                    except Exception as e:
-                                        logger.warning(f"Recovery: failed progress update for task {node.task_id_display}: {e}")
-                                    initial_reported = True
-                                    break
                         if node.is_stop_transmission:
                             break
                 else:
