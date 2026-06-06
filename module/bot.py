@@ -1284,6 +1284,36 @@ async def direct_download(
         node,
     )
 
+    # Insert initial progress entry so bot message shows 0% immediately
+    try:
+        from module.download_stat import get_download_result
+        media_type = getattr(download_message, "media", None)
+        if media_type:
+            media_obj = getattr(download_message, media_type.value, None)
+            if media_obj:
+                initial_total = getattr(media_obj, "file_size", 0)
+                if initial_total and initial_total > 0:
+                    dr = get_download_result()
+                    cid = str(chat_id)
+                    if cid not in dr:
+                        dr[cid] = {}
+                    dr[cid][str(download_message.id)] = {
+                        "down_byte": 0,
+                        "total_size": initial_total,
+                        "file_name": getattr(media_obj, "file_name", "") or "",
+                        "start_time": time.time(),
+                        "end_time": time.time(),
+                        "download_speed": 0,
+                        "each_second_total_download": 0,
+                        "task_id": node.task_id,
+                        "task_id_display": node.task_id_display,
+                        "source_chat_title": source_chat_title or "",
+                        "source_chat_id": source_chat_id,
+                        "source_message_id": source_message_id,
+                    }
+    except Exception:
+        pass
+
     node.is_running = True
 
 

@@ -276,6 +276,15 @@ async def update_download_status(
         # Mark completion time when download finishes
         if down_byte >= total_size and total_size > 0:
             _download_result[chat_id][message_id]["end_time"] = cur_time
+            _download_result[chat_id][message_id]["download_speed"] = 0
+            # Recalculate total speed from remaining active tasks
+            _total = 0
+            for _cid, _msgs in list(_download_result.items()):
+                for _mid, _val in list(_msgs.items()):
+                    _ckey = f"{_cid}_{_mid}"
+                    if not (is_task_paused(_ckey) or is_task_paused(_val.get("task_id", ""))):
+                        _total += _val.get("download_speed", 0)
+            _total_download_speed = _total
             # 下载完成时立即持久化
             save_downloads()
     else:
