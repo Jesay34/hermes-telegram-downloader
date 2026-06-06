@@ -1257,31 +1257,6 @@ async def _report_bot_status(
             f"{failed_files_str}\n`"
         )
         if new_msg_str != node.last_edit_msg:
-            # Throttle: only update every 20% progress using byte-level progress
-            if not immediate_reply:
-                current_pct = 0
-                total = 0
-                weighted = 0
-                download_result = get_download_result()
-                if node.chat_id in download_result:
-                    for idx, value in download_result[node.chat_id].items():
-                        tid = str(value.get("task_id", ""))
-                        if tid == str(node.task_id) or tid == str(node.task_id_display):
-                            ts = value.get("total_size", 0)
-                            if ts > 0:
-                                total += ts
-                                weighted += value.get("down_byte", 0)
-                if total > 0:
-                    current_pct = int(weighted / total * 100)
-                bucket = (current_pct // 20) * 20
-                prev_bucket = (node.last_progress_pct // 20) * 20 if node.last_progress_pct >= 0 else -1
-                if bucket == prev_bucket and node.last_progress_pct >= 0:
-                    node.last_progress_pct = current_pct
-                    logger.debug(f"Throttled: task {node.task_id_display} pct={current_pct}% bucket={bucket} prev={prev_bucket}")
-                    return
-                node.last_progress_pct = current_pct
-                logger.debug(f"Editing: task {node.task_id_display} pct={current_pct}% bucket={bucket} prev={prev_bucket}")
-
             try:
                 await client.edit_message_text(
                     node.from_user_id,
