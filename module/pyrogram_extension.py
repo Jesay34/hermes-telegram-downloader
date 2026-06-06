@@ -1273,10 +1273,10 @@ async def _report_bot_status(
                             ts = value.get("total_size", 0)
                             if ts > 0:
                                 total += ts
+                                weighted += value.get("down_byte", 0)
+                if total > 0:
+                    current_pct = int(weighted / total * 100)
                 # NOTE: 20% bucket throttle removed
-                prev_bucket = (node.last_progress_pct // 20) * 20 if node.last_progress_pct >= 0 else -1
-                if bucket == prev_bucket and node.last_progress_pct >= 0:
-                    return  # Don't update last_progress_pct — only update on actual edit
             try:
                 await client.edit_message_text(
                     node.from_user_id,
