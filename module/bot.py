@@ -463,6 +463,13 @@ class DownloadBot:
                     logger.info(f"Recovery: re-downloading message {message_id} for task {node.task_id}")
                     await self.add_download_task(msg, node)
                     node.is_running = True
+                    # Immediately update bot message to show download progress
+                    try:
+                        from module.pyrogram_extension import report_bot_status
+                        node.last_reply_time = 0  # Reset cooldown
+                        await report_bot_status(self.bot, node)
+                    except Exception as e:
+                        logger.warning(f"Recovery: failed to send initial progress: {e}")
                     # Wait for download to finish (no timeout — large files may take hours)
                     while node.total_task == 0 or node.total_download_task < node.total_task:
                         await asyncio.sleep(3)
