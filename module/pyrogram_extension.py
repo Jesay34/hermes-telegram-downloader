@@ -1276,7 +1276,13 @@ async def _report_bot_status(
                                 weighted += value.get("down_byte", 0)
                 if total > 0:
                     current_pct = int(weighted / total * 100)
-                # 20% bucket throttle removed: update_reply_message 3s polling is the throttle — only update on actual edit
+                bucket = (current_pct // 20) * 20
+                prev_bucket = (node.last_progress_pct // 20) * 20 if node.last_progress_pct >= 0 else -1
+                if bucket == prev_bucket and node.last_progress_pct >= 0:
+                    return
+                node.last_progress_pct = current_pct  # Update here BEFORE edit attempt, so even
+                                                      # if edit fails (FloodWait etc.) we don't
+                                                      # retry the same bucket on next poll
             try:
                 await client.edit_message_text(
                     node.from_user_id,
@@ -1285,7 +1291,6 @@ async def _report_bot_status(
                     parse_mode=pyrogram.enums.ParseMode.MARKDOWN,
                 )
                 node.last_edit_msg = new_msg_str
-                node.last_progress_pct = current_pct  # Track last edited percentage for throttle
             except pyrogram.errors.exceptions.flood_420.FloodWait as e:
                 wait_seconds = e.value
                 wait_hours = wait_seconds / 3600
@@ -1297,8 +1302,6 @@ async def _report_bot_status(
                 )
             except pyrogram.errors.exceptions.bad_request_400.MessageNotModified:
                 pass
-            except pyrogram.errors.exceptions.bad_request_400.MessageIdInvalid:
-                logger.info(f"edit_message_text: reply message {node.reply_message_id} no longer available")
             except Exception as e:
                 logger.debug(f"edit_message_text failed: {e}")
 
