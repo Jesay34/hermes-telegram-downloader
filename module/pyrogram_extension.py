@@ -895,6 +895,31 @@ async def _report_bot_status(
                 logger.debug(f"edit_message_text failed: {e}")
 
 
+async def check_user_permission(
+    client: pyrogram.Client, user_id: Union[int, str], chat_id: Union[int, str]
+) -> bool:
+    """
+    Check if the user has permission to send videos in the group.
+ 
+    Args:
+        client (pyrogram.Client): A client instance created using Pyrogram.
+        user_id (Union[int, str]): User Id
+        chat_id (Union[int, str]): Chat Id
+ 
+     Returns:
+        if can_send_media_messages return True
+    """
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        return member and (
+            not member.permissions or member.permissions.can_send_media_messages
+        )
+    except Exception as e:
+        logger.warning(f"Failed to check user permission: {e}")
+ 
+    return False
+ 
+ 
 def set_max_concurrent_transmissions(
     client: pyrogram.Client, max_concurrent_transmissions: int
 ):
