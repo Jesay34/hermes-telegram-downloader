@@ -463,16 +463,25 @@ class DownloadBot:
                     logger.info(f"Recovery: re-downloading message {message_id} for task {node.task_id}")
                     await self.add_download_task(msg, node)
                     node.is_running = True
-                    # Immediately update bot message to show download progress
-                    try:
-                        from module.pyrogram_extension import report_bot_status
-                        node.last_reply_time = 0  # Reset cooldown
-                        await report_bot_status(self.bot, node)
-                    except Exception as e:
-                        logger.warning(f"Recovery: failed to send initial progress: {e}")
                     # Wait for download to finish (no timeout — large files may take hours)
+                    initial_reported = False
                     while node.total_task == 0 or node.total_download_task < node.total_task:
                         await asyncio.sleep(3)
+                        # Once download progress data exists, immediately update bot message
+                        if not initial_reported:
+                            from module.download_stat import get_download_result
+                            dr = get_download_result()
+                            if node.chat_id in dr:
+                                for _v in dr[node.chat_id].values():
+                                    if _v.get("down_byte", 0) > 0:
+                                        try:
+                                            from module.pyrogram_extension import report_bot_status
+                                            node.last_reply_time = 0
+                                            await report_bot_status(self.bot, node)
+                                        except Exception:
+                                            pass
+                                        initial_reported = True
+                                        break
                         if node.is_stop_transmission:
                             break
                 else:
