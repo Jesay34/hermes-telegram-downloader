@@ -135,9 +135,11 @@ def complete_task(task_id):
     with _lock:
         tasks = _load_all()
         tid = task_id if isinstance(task_id, int) else int(task_id) if str(task_id).isdigit() else task_id
+        before = len(tasks)
         tasks = [t for t in tasks if t.get("task_id") != tid and str(t.get("task_id", "")) != str(task_id)]
         _save_all(tasks)
-        logger.info(f"Removed completed bot task {task_id} from store")
+        if len(tasks) < before:
+            logger.info(f"Removed completed bot task {task_id} from store")
 
 
 def get_running_tasks() -> list:
