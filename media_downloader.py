@@ -451,6 +451,25 @@ async def download_media(
                     except OSError:
                         pass
                 return DownloadStatus.SuccessDownload, file_name, ""
+            else:
+                # download_media returned None or non-str — Pyrogram couldn't fetch
+                # without raising. Log details and set error_message for user.
+                reason = "下载返回为空" if temp_download_path is None else f"下载返回类型异常: {type(temp_download_path).__name__}"
+                logger.warning(
+                    f"Message[{message.id}] {ui_file_name}: "
+                    f"client.download_media returned {repr(temp_download_path)}, "
+                    f"retry {retry + 1}/3"
+                )
+                error_message = reason
+                await asyncio.sleep(RETRY_TIME_OUT)
+                message = await fetch_message(client, message)
+                if _check_timeout(retry, message.id):
+                    logger.error(
+                        f"Message[{message.id}] {ui_file_name}: "
+                        f"download_media returned None/empty after 3 retries."
+                    )
+                    if error_message:
+                        error_message = f"{error_message}（重试3次后失败）"
         except pyrogram.errors.exceptions.bad_request_400.BadRequest:
             _cleanup_temp_file(temp_file_name)
             logger.warning(
@@ -501,7 +520,10 @@ async def download_media(
             error_message = f"下载异常: {str(e)[:100]}"
             break
     _cleanup_temp_file(temp_file_name)
-    return DownloadStatus.FailedDownload, None, error_message or "下载失败"
+    # Log the specific failure reason before returning
+    final_reason = error_message or "下载失败（未知原因）"
+    logger.warning(f"Message[{message.id}] {ui_file_name}: download failed after 3 retries, reason: {final_reason}")
+    return DownloadStatus.FailedDownload, None, final_reason
 
 
 def _load_config():
