@@ -1229,7 +1229,10 @@ async def _report_bot_status(
             except Exception as e:
                 logger.warning(f"Failed to get failed downloads for re-count: {e}")
         if immediate_reply and (actual_total > 0 or actual_failed > 0):
-            display_total = actual_total + actual_failed
+            # actual_total counts entries in _download_result, actual_failed counts
+            # entries in failed list. These can overlap (a failed file is in both),
+            # so don't add them — use the larger of the two, or node.total_task.
+            display_total = max(actual_total, actual_failed)
             display_success = actual_success
             display_failed = actual_failed
             display_skipped = node.skip_download_task

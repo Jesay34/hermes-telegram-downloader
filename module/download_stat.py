@@ -98,6 +98,22 @@ def delete_task(task_id) -> bool:
     return False
 
 
+def delete_download_result_entry(chat_id, msg_id) -> bool:
+    """Delete a specific entry from _download_result by (chat_id, msg_id).
+    Unlike delete_task which matches by task_id, this deletes by exact
+    chat_id + message_id pair. Used when a file download fails, so it
+    doesn't stay in the WebUI active download list forever.
+    Returns True if entry was found and deleted."""
+    with _sync_lock:
+        if chat_id in _download_result and msg_id in _download_result[chat_id]:
+            del _download_result[chat_id][msg_id]
+            if not _download_result[chat_id]:
+                del _download_result[chat_id]
+            save_downloads()
+            return True
+    return False
+
+
 def add_failed_download(chat_id, msg_id, task_id, file_name, error_message, total_size=0, source_link=""):
     """Track a failed download"""
     # Remove existing entry with same (chat_id, msg_id) to deduplicate
