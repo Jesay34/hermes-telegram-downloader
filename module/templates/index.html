@@ -35,6 +35,8 @@
         .checkbox-row.selected { background-color: #eff6ff; }
         .batch-bar { animation: slideDown 0.2s ease-out; }
         @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .pulse-badge { animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen" x-data="app()" x-init="init()" x-cloak>
@@ -101,6 +103,22 @@
                                         <span x-show="activeTasks.length > 0"
                                               class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md bg-blue-500 text-white min-w-[1.5rem] justify-center"
                                               x-text="activeTasks.length"></span>
+                                    </span>
+                                </button>
+                                <button
+                                    @click="activeTab = 'pending'; selectedTasks = []"
+                                    class="px-4 py-3 text-sm font-medium transition-colors relative"
+                                    :class="activeTab === 'pending' ? 'tab-active' : 'tab-inactive'"
+                                    role="tab"
+                                >
+                                    <span class="flex items-center gap-2">
+                                        <svg class="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        待下载
+                                        <span x-show="pendingTasks.length > 0"
+                                              class="pulse-badge inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md bg-amber-500 text-white min-w-[1.5rem] justify-center"
+                                              x-text="pendingTasks.length"></span>
                                     </span>
                                 </button>
                                 <button
@@ -276,6 +294,113 @@
                                     }"
                                     :style="'width: ' + task.download_progress + '%'"
                                 ></div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Pending Downloads Tab -->
+        <div x-show="activeTab === 'pending'" x-transition:enter="fade-in">
+            <!-- Summary Bar -->
+            <div x-show="pendingTasks.length > 0" class="mb-4 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-500 hover:text-gray-700">
+                        <input type="checkbox" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            :checked="selectedTasks.length === pendingTasks.length && pendingTasks.length > 0"
+                            @change="toggleSelectAll('pending')">
+                        全选
+                    </label>
+                    <span class="text-xs text-gray-400" x-text="pendingTasks.length + ' 个任务等待下载'"></span>
+                </div>
+                <span class="text-xs text-gray-400">按接收时间排序 · 最早优先</span>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="pendingTasks.length === 0" class="text-center py-20">
+                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <h3 class="text-gray-500 font-medium mb-1">暂无待下载任务</h3>
+                <p class="text-gray-400 text-sm">通过 Telegram Bot 发送的链接会在这里排队等待下载</p>
+            </div>
+
+            <!-- Pending Task Cards -->
+            <div class="space-y-3">
+                <template x-for="(task, idx) in pendingTasks" :key="task.task_id">
+                    <div class="checkbox-row card-hover rounded-xl p-4 border border-amber-200 bg-white shadow-sm fade-in"
+                         :class="idx === 0 ? 'ring-1 ring-amber-300' : ''"
+                         :id="'card-' + task.task_id">
+                        <div class="flex items-start gap-3">
+                            <!-- Checkbox -->
+                            <input type="checkbox" class="w-4 h-4 mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                                :value="task.task_id"
+                                :checked="selectedTasks.includes(task.task_id)"
+                                @change="toggleSelect(task.task_id)">
+
+                            <!-- Queue Position Badge -->
+                            <div class="flex flex-col items-center shrink-0 mt-0.5">
+                                <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                                      :class="idx === 0 ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-600'"
+                                      x-text="idx + 1"></span>
+                            </div>
+
+                            <!-- File Info -->
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                        等待中
+                                    </span>
+                                    <span class="text-xs text-gray-400 font-medium" x-text="task.chat_title || task.chat"></span>
+                                    <span class="text-xs text-gray-300">|</span>
+                                    <span class="text-xs text-gray-400 font-mono" x-text="'task: ' + (task.task_id_display || task.task_id)"></span>
+                                    <template x-if="task.created_at">
+                                        <span>
+                                            <span class="text-xs text-gray-300">|</span>
+                                            <span class="text-xs text-gray-400" x-text="'接收于 ' + task.created_at"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                                <h4 class="text-sm font-medium text-gray-900 truncate" :title="task.filename" x-text="task.filename"></h4>
+                                <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
+                                    <span x-text="task.total_size"></span>
+                                    <span class="text-gray-300">|</span>
+                                    <span class="text-xs text-gray-400" x-text="task.source_type"></span>
+                                    <template x-if="task.wait_time">
+                                        <span>
+                                            <span class="text-gray-300">|</span>
+                                            <span class="text-amber-600 font-medium" x-text="'已等待 ' + task.wait_time"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                                <!-- Source URL -->
+                                <template x-if="task.url">
+                                    <div class="mt-1.5 flex items-center gap-1.5">
+                                        <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                                        </svg>
+                                        <span class="text-xs text-gray-400 truncate" x-text="task.url" :title="task.url"></span>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button
+                                    @click="removePending(task.task_id)"
+                                    class="btn-action p-1.5 rounded-lg text-red-500 hover:bg-red-50 border border-red-200"
+                                    title="移除"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -499,6 +624,7 @@
             activeTasks: [],
             completedTasks: [],
             failedTasks: [],
+            pendingTasks: [],
             allTasks: [],
             selectedTasks: [],
             toast: { show: false, message: '', type: 'success' },
@@ -508,11 +634,16 @@
                 await this.fetchVersion();
                 await this.fetchDownloadState();
                 await this.fetchActive();
+                await this.fetchPending();
                 await this.fetchCompleted();
                 this.pollTimer = setInterval(() => {
                     this.fetchDownloadStatus();
                     this.fetchActive();
                 }, 1500);
+                // Pending list refreshes every 5 seconds
+                this.pendingPollTimer = setInterval(() => {
+                    this.fetchPending();
+                }, 5000);
                 // Completed list refreshes less frequently
                 this.completedPollTimer = setInterval(() => {
                     this.fetchCompleted();
@@ -567,6 +698,29 @@
                 } catch(e) {}
             },
 
+            async fetchPending() {
+                try {
+                    const res = await fetch('/get_pending_list');
+                    const data = await res.json();
+                    this.pendingTasks = data;
+                } catch(e) {}
+            },
+
+            async removePending(taskId) {
+                try {
+                    const res = await fetch('/remove_pending?task_id=' + encodeURIComponent(taskId), { method: 'POST' });
+                    const data = await res.json();
+                    if (data.code === '1') {
+                        this.showToast('已移除待下载任务', 'success');
+                        this.fetchPending();
+                    } else {
+                        this.showToast(data.message || '移除失败', 'error');
+                    }
+                } catch(e) {
+                    this.showToast('网络错误', 'error');
+                }
+            },
+
             async toggleGlobalPause() {
                 try {
                     const wasDownloading = this.isDownloading;
@@ -595,6 +749,7 @@
             toggleSelectAll(tab) {
                 let tasks;
                 if (tab === 'active') tasks = this.activeTasks;
+                else if (tab === 'pending') tasks = this.pendingTasks;
                 else if (tab === 'completed') tasks = this.completedTasks;
                 else tasks = this.failedTasks;
 

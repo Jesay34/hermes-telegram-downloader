@@ -9,6 +9,7 @@ from flask import Flask, jsonify, render_template, request
 
 import utils
 from module.app import Application
+from module.task_store import get_pending_tasks, remove_task
 from module.download_stat import (
     DownloadState,
     batch_delete_failed,
@@ -316,3 +317,82 @@ def web_retry_task():
     if success:
         return jsonify({"code": "1", "message": "retry queued"})
     return jsonify({"code": "0", "message": "task not found"})
+
+
+@_flask_app.route("/get_pending_list")
+def web_get_pending_list():
+    """Get list of pending tasks (received but not started downloading)"""
+    import time as _time
+    pending = get_pending_tasks()
+    result = []
+    for task in pending:
+        task_id = task.get("task_id", "")
+        created_at = task.get("created_at", 0)
+        created_at_str = ""
+        wait_time = ""
+        if created_at:
+            created_at_str = datetime.datetime.fromtimestamp(created_at).strftime("%m-%d %H:%M:%S")
+            elapsed = int(_time.time() - created_at)
+            h, m = divmod(elapsed // 60, 60)
+            wait_time = f"{h}h{m:02d}m" if h > 0 else f"{m}m"
+
+        # Try to get chat title from task data or URL
+        chat_title = task.get("extra_data", {}).get("chat_title", "")
+        url = task.get("url", "")
+
+        # Determine source type
+        source_type = task.get("task_type", "download")
+        if source_type == "download":
+            source_type = "频道消息"
+        elif source_type == "forward":
+            source_type = "转发消息"
+        else:
+            source_type = "消息"
+
+        # Build filename from URL or extra_data
+        filename = task.get("extra_data", {}).get("filename", "")
+        if not filename and url:
+            filename = url.split("/")[-1] if "/" in url else url
+        if not filename:
+            filename = f"task_{task_id}"
+
+        total_size = task.get("extra_data", {}).get("total_size", "")
+        if isinstance(total_size, (int, float)) and total_size > 0:
+            total_size = format_byte(total_size)
+        elif not total_size:
+            total_size = "未知"
+
+        task_id_display = task.get("extra_data", {}).get("task_id_display", str(task_id))
+
+        result.append({
+            "task_id": str(task_id),
+            "task_id_display": task_id_display,
+            "chat": str(task.get("chat_id", "")),
+            "chat_title": chat_title,
+            "filename": filename,
+            "total_size": total_size,
+            "url": url,
+            "source_type": source_type,
+            "created_at": created_at_str,
+            "created_ts": created_at,
+            "wait_time": wait_time,
+        })
+
+    # Sort by created_at ascending (earliest first)
+    result.sort(key=lambda x: x.get("created_ts", 0))
+    return jsonify(result)
+
+
+@_flask_app.route("/remove_pending", methods=["POST"])
+def web_remove_pending():
+    """Remove a pending task from the queue"""
+    task_id = request.args.get("task_id")
+    if not task_id:
+        return jsonify({"code": "0", "message": "task_id required"})
+    # Try int conversion since task_store uses int task_ids
+    try:
+        task_id_int = int(task_id)
+    except (ValueError, TypeError):
+        task_id_int = task_id
+    remove_task(task_id_int)
+    return jsonify({"code": "1", "message": "removed"})
