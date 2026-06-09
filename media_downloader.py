@@ -416,6 +416,7 @@ async def download_media(
         )
         return DownloadStatus.SkipDownload, None, ""
     if _media is None:
+        logger.warning(f"Message[{message.id}]: no media found in message, skipping download")
         return DownloadStatus.SkipDownload, None, ""
     # Build source link from message for failed downloads
     source_link = ""
