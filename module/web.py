@@ -27,6 +27,7 @@ from module.download_stat import (
     set_download_state,
 )
 from utils.format import format_byte
+import asyncio
 
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
@@ -51,6 +52,9 @@ def run_web_server(app: Application):
 
 
 # pylint: disable = W0603
+_app: Application = None
+
+
 def init_web(app: Application):
     """
     Initialize and start the web server.
@@ -61,6 +65,8 @@ def init_web(app: Application):
     Returns:
         None.
     """
+    global _app
+    _app = app
     if app.debug_web:
         threading.Thread(target=run_web_server, args=(app,)).start()
     else:
@@ -309,14 +315,41 @@ def web_batch_delete():
 
 @_flask_app.route("/retry_task", methods=["POST"])
 def web_retry_task():
-    """Retry a failed download task - removes from failed list"""
+    """Retry a failed download task - re-download the file"""
     task_id = request.args.get("task_id")
     if not task_id:
         return jsonify({"code": "0", "message": "task_id required"})
-    success = remove_failed_download(task_id)
-    if success:
-        return jsonify({"code": "1", "message": "retry queued"})
-    return jsonify({"code": "0", "message": "task not found"})
+
+    # Find the failed entry to get chat_id + msg_id
+    failed_list = get_failed_downloads()
+    target = None
+    for f in failed_list:
+        if str(f.get("task_id", "")) == str(task_id):
+            target = f
+            break
+
+    if not target:
+        return jsonify({"code": "0", "message": "task not found in failed list"})
+
+    chat_id = target.get("chat_id")
+    msg_id = target.get("msg_id")
+    if not chat_id or not msg_id:
+        return jsonify({"code": "0", "message": "incomplete task data (missing chat_id/msg_id)"})
+
+    # Remove from failed list first
+    remove_failed_download(task_id)
+
+    # Submit async retry to the main event loop
+    try:
+        if _app and _app.loop:
+            asyncio.run_coroutine_threadsafe(
+                _async_retry_download(chat_id, msg_id),
+                _app.loop,
+            )
+            return jsonify({"code": "1", "message": "已加入重试队列"})
+        return jsonify({"code": "0", "message": "应用尚未初始化完成"})
+    except Exception as e:
+        return jsonify({"code": "0", "message": f"重试失败: {str(e)}"})
 
 
 @_flask_app.route("/get_pending_list")
@@ -396,3 +429,44 @@ def web_remove_pending():
         task_id_int = task_id
     remove_task(task_id_int)
     return jsonify({"code": "1", "message": "removed"})
+
+
+async def _async_retry_download(chat_id, msg_id):
+    """Async helper: fetch the message and re-add to download queue"""
+    logger = logging.getLogger("web.retry")
+    try:
+        try:
+            cid = int(chat_id)
+        except (ValueError, TypeError):
+            cid = chat_id
+
+        client = _bot.client
+        if not client:
+            logger.error("Retry failed: _bot.client is not available")
+            return
+
+        msg = await client.get_messages(cid, int(msg_id))
+        if not msg or msg.empty:
+            logger.error(f"Retry failed: message {msg_id} not found in chat {cid}")
+            return
+
+        from module.app import TaskNode, TaskType
+
+        node = TaskNode(
+            chat_id=cid,
+            from_user_id=cid,
+            reply_message_id=0,
+            replay_message="WebUI retry",
+            limit=1,
+            bot=None,
+            task_id=_bot.gen_task_id(),
+        )
+        _bot.add_task_node(node)
+
+        from media_downloader import add_download_task as _add_download_task
+        await _add_download_task(msg, node)
+        node.is_running = True
+
+        logger.info(f"Retry: queued message {msg_id} from chat {cid} as task {node.task_id_display}")
+    except Exception as e:
+        logger.error(f"Retry failed for chat={chat_id} msg={msg_id}: {e}", exc_info=True)
