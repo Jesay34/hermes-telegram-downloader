@@ -114,7 +114,7 @@ def delete_download_result_entry(chat_id, msg_id) -> bool:
     return False
 
 
-def add_failed_download(chat_id, msg_id, task_id, file_name, error_message, total_size=0, source_link=""):
+def add_failed_download(chat_id, msg_id, task_id, file_name, error_message, total_size=0, source_link="", from_user_id=""):
     """Track a failed download"""
     # Remove existing entry with same (chat_id, msg_id) to deduplicate
     global _failed_downloads
@@ -132,6 +132,7 @@ def add_failed_download(chat_id, msg_id, task_id, file_name, error_message, tota
             "error_message": error_message,
             "total_size": total_size,
             "source_link": source_link,
+            "from_user_id": from_user_id,
             "timestamp": time.time(),
         })
     save_downloads()  # 失败时立即持久化

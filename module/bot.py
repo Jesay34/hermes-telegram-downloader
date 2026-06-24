@@ -95,6 +95,7 @@ def _cleanup_stopped_task(node):
                         error_message="手动终止",
                         total_size=total,
                         source_link=source_link,
+                            from_user_id=getattr(node, "from_user_id", "") or "",
                     )
                     recorded += 1
                 # Delete the download progress entry (both incomplete and complete)
@@ -112,6 +113,7 @@ def _cleanup_stopped_task(node):
                 file_name="",
                 error_message="手动终止",
                 total_size=0,
+                    from_user_id=getattr(node, "from_user_id", "") or "",
             )
     except Exception as e:
         logger.warning(f"Failed to cleanup stopped task {getattr(node, 'task_id_display', node.task_id)}: {e}")
@@ -166,6 +168,7 @@ def _record_pending_failures(node):
                         error_message="下载未开始（下载队列中未进入实际下载流程）",
                         total_size=value.get("total_size", 0),
                         source_link=source_link,
+                            from_user_id=getattr(node, "from_user_id", "") or "",
                     )
                     recorded += 1
         if recorded > 0:

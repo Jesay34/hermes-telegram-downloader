@@ -321,6 +321,7 @@ async def download_task(client: pyrogram.Client, message: pyrogram.types.Message
             error_message=error_message or "下载失败",
             total_size=file_size,
             source_link=source_link,
+            from_user_id=getattr(node, "from_user_id", "") or "",
         )
         # Remove from active download list so it doesn't stay in WebUI forever
         from module.download_stat import delete_download_result_entry as _ddre

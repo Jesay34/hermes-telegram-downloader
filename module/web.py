@@ -129,6 +129,10 @@ def get_download_list():
 
     already_down = request.args.get("already_down") == "true"
 
+    # Pagination support for completed downloads
+    offset = request.args.get("offset", 0, type=int)
+    limit = request.args.get("limit", 0, type=int)
+
     download_result = get_download_result()
     result = []
     for chat_id, messages in download_result.items():
@@ -215,7 +219,18 @@ def get_download_list():
     else:
         result.sort(key=lambda x: x.get("start_time", 0), reverse=True)
 
-    return jsonify(result)
+    total = len(result)
+
+    # Apply pagination slice (only for completed downloads)
+    if already_down and limit > 0:
+        result = result[offset:offset + limit]
+
+    return jsonify(result) if not already_down else jsonify({
+        "tasks": result,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    })
 
 
 @_flask_app.route("/get_failed_downloads")
@@ -242,6 +257,7 @@ def web_get_failed_downloads():
             "total_size": format_byte(f.get("total_size", 0)),
             "failed_time": failed_time,
             "source_link": f.get("source_link", ""),
+            "from_user_id": f.get("from_user_id", "") or "",
         })
     return jsonify(result)
 
@@ -333,6 +349,7 @@ def web_retry_task():
 
     chat_id = target.get("chat_id")
     msg_id = target.get("msg_id")
+    from_user_id = target.get("from_user_id", "") or ""
     if not chat_id or not msg_id:
         return jsonify({"code": "0", "message": "incomplete task data (missing chat_id/msg_id)"})
 
@@ -343,7 +360,7 @@ def web_retry_task():
     try:
         if _app and _app.loop:
             asyncio.run_coroutine_threadsafe(
-                _async_retry_download(chat_id, msg_id),
+                _async_retry_download(chat_id, msg_id, from_user_id),
                 _app.loop,
             )
             return jsonify({"code": "1", "message": "已加入重试队列"})
@@ -391,7 +408,7 @@ def web_batch_retry():
         try:
             if _app and _app.loop:
                 asyncio.run_coroutine_threadsafe(
-                    _async_retry_download(chat_id, msg_id),
+                    _async_retry_download(chat_id, msg_id, from_user_id),
                     _app.loop,
                 )
                 queued += 1
@@ -487,7 +504,7 @@ def web_remove_pending():
     return jsonify({"code": "1", "message": "removed"})
 
 
-async def _async_retry_download(chat_id, msg_id):
+async def _async_retry_download(chat_id, msg_id, from_user_id=""):
     """Async helper: fetch the message and re-add to download queue"""
     logger = logging.getLogger("web.retry")
     try:
@@ -539,6 +556,19 @@ async def _async_retry_download(chat_id, msg_id):
         from media_downloader import add_download_task as _add_download_task
         await _add_download_task(msg, node)
         node.is_running = True
+
+
+        # Send retry notification to user via bot
+        if from_user_id and _bot and _bot.bot:
+            try:
+                chat_name = getattr(msg.chat, "title", str(cid))
+                msg_text = "🔄 重试任务已加入下载队列\n"
+                msg_text += f"消息: {msg_id}\n"
+                msg_text += f"任务: {node.task_id_display}\n"
+                msg_text += f"群组: {chat_name}"
+                await _bot.bot.send_message(int(from_user_id), msg_text)
+            except Exception as e:
+                logger.warning(f"Retry notification failed for user {from_user_id}: {e}")
 
         logger.info(f"Retry: queued message {msg_id} from chat {cid} as task {node.task_id_display}")
     except Exception as e:
