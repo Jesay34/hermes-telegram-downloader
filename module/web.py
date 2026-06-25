@@ -67,6 +67,9 @@ def init_web(app: Application):
     """
     global _app
     _app = app
+    # Load download history into memory so WebUI shows completed tasks
+    from module.download_stat import load_downloads
+    load_downloads()
     if app.debug_web:
         threading.Thread(target=run_web_server, args=(app,)).start()
     else:
