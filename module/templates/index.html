@@ -515,7 +515,7 @@
                                 </div>
                                 <div x-show="completedTasks.length > 0 && completedTasks.length >= tabPage.completed.total && tabPage.completed.total > 0"
                                      class="text-center py-4 text-sm text-gray-400">
-                                    已加载全部 {{ tabPage.completed.total }} 个任务
+                                    <span x-text="`已加载全部 ${tabPage.completed.total} 个任务`"></span>
                                 </div>
             </div>
         </div>
@@ -629,7 +629,7 @@
                                 </div>
                                 <div x-show="failedTasks.length > 0 && failedTasks.length >= tabPage.failed.total && tabPage.failed.total > 0"
                                      class="text-center py-4 text-sm text-gray-400">
-                                    已加载全部 {{ tabPage.failed.total }} 个任务
+                                    <span x-text="`已加载全部 ${tabPage.failed.total} 个任务`"></span>
                                 </div>
                             </div>
                         </div>
