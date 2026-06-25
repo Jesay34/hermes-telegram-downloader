@@ -70,6 +70,8 @@ def init_web(app: Application):
     # Load download history into memory so WebUI shows completed tasks
     from module.download_stat import load_downloads
     load_downloads()
+    logger = logging.getLogger("web.init")
+    logger.info("download_history loaded into memory")
     if app.debug_web:
         threading.Thread(target=run_web_server, args=(app,)).start()
     else:
@@ -127,9 +129,6 @@ def get_app_version():
 @_flask_app.route("/get_download_list")
 def get_download_list():
     """Get download list with task_id and status"""
-    # Ensure completed/failed data is loaded into memory on first request
-    from module.download_stat import load_downloads
-    load_downloads()
     if request.args.get("already_down") is None:
         return "[]"
 
