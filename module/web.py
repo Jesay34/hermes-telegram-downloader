@@ -565,16 +565,10 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
             download_filter=None,
             from_user_id=cid,
             task_type="download",
-            extra_data={"task_id_display": node.task_id_display},
+            extra_data={"task_id_display": node.task_id_display, "msg_id": msg_id},
         )
 
-        # Remove placeholder if this was a batch retry
-        if placeholder_task_id:
-            from module.task_store import remove_task as _remove_placeholder
-            _remove_placeholder(placeholder_task_id)
-
-        from media_downloader import add_download_task as _add_download_task
-        await _add_download_task(msg, node)
+        # Task stays pending -- _consume_pending_tasks will pick it up later
         node.is_running = True
 
 
