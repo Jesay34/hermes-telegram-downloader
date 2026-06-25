@@ -554,12 +554,8 @@ async def _async_retry_download(chat_id, msg_id, from_user_id=""):
             extra_data={"task_id_display": node.task_id_display},
         )
 
-        # Small delay so the task shows as pending in WebUI before queue worker picks it up
-        import asyncio
-        await asyncio.sleep(3)
-
-        from media_downloader import add_download_task as _add_download_task
-        await _add_download_task(msg, node)
+        # Do NOT add to download queue here — task stays pending and will be consumed
+        # by bot's pending consumer loop.
         node.is_running = True
 
 
