@@ -430,10 +430,9 @@ def web_batch_retry():
 def web_get_pending_list():
     """Get list of pending tasks (received but not started downloading)"""
     import time as _time
-    # Return all running tasks (pending + downloading) so WebUI shows them
-    all_running = [t for t in get_pending_tasks() if t.get("status") == "running"]
+    pending = get_pending_tasks()
     result = []
-    for task in all_running:
+    for task in pending:
         task_id = task.get("task_id", "")
         created_at = task.get("created_at", 0)
         created_at_str = ""
@@ -554,6 +553,10 @@ async def _async_retry_download(chat_id, msg_id, from_user_id=""):
             task_type="download",
             extra_data={"task_id_display": node.task_id_display},
         )
+
+        # Small delay so the task shows as pending in WebUI before queue worker picks it up
+        import asyncio
+        await asyncio.sleep(3)
 
         from media_downloader import add_download_task as _add_download_task
         await _add_download_task(msg, node)
