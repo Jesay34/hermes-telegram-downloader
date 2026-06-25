@@ -129,6 +129,11 @@ def get_app_version():
 @_flask_app.route("/get_download_list")
 def get_download_list():
     """Get download list with task_id and status"""
+    from module.download_stat import load_downloads, get_download_result
+    r = get_download_result()
+    total = sum(len(v) for v in r.values())
+    if total == 0:
+        load_downloads()
     if request.args.get("already_down") is None:
         return "[]"
 
