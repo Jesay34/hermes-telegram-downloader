@@ -190,7 +190,10 @@ def remove_failed_download(task_id) -> bool:
         _failed_downloads = [
             f for f in _failed_downloads if str(f.get("task_id", "")) != str(task_id)
         ]
-        return len(_failed_downloads) < before
+        if len(_failed_downloads) < before:
+            save_downloads()
+            return True
+    return False
 
 
 def batch_delete_tasks(task_ids: list) -> int:
@@ -211,7 +214,10 @@ def batch_delete_failed(task_ids: list) -> int:
         _failed_downloads = [
             f for f in _failed_downloads if str(f.get("task_id", "")) not in task_id_set
         ]
-        return before - len(_failed_downloads)
+        deleted = before - len(_failed_downloads)
+    if deleted > 0:
+        save_downloads()
+    return deleted
 
 
 def clear_completed_downloads():

@@ -86,6 +86,18 @@ def index():
     return render_template("index.html")
 
 
+@_flask_app.route("/get_completed_count")
+def get_completed_count():
+    """Lightweight endpoint: return only the total count of completed downloads.
+    Used for polling to detect new completions without fetching full data."""
+    count = 0
+    for messages in get_download_result().values():
+        for value in messages.values():
+            if value["down_byte"] == value["total_size"] and value["total_size"] > 0:
+                count += 1
+    return jsonify(total=count)
+
+
 @_flask_app.route("/get_download_status")
 def get_download_speed():
     """Get download speed"""
@@ -142,6 +154,8 @@ def get_download_list():
     # Pagination support for completed downloads
     offset = request.args.get("offset", 0, type=int)
     limit = request.args.get("limit", 0, type=int)
+    # Server-side search for completed downloads
+    search = request.args.get("search", "").strip().lower()
 
     download_result = get_download_result()
     result = []
@@ -210,6 +224,13 @@ def get_download_list():
                 if ts:
                     completed_time = datetime.datetime.fromtimestamp(ts).strftime("%m-%d %H:%M:%S")
 
+            # Server-side search filter (by task_id or filename)
+            if search:
+                task_id_display = value.get("task_id_display", "") or task_id
+                searchable = f"{task_id} {task_id_display} {os.path.basename(value['file_name'])}".lower()
+                if search not in searchable:
+                    continue
+
             result.append({
                 "task_id": str(task_id),
                 "chat": str(chat_id),
@@ -239,7 +260,7 @@ def get_download_list():
 
     total = len(result)
 
-    # Apply pagination slice (only for completed downloads)
+    # Apply pagination slice (for completed downloads with limit > 0)
     if already_down and limit > 0:
         result = result[offset:offset + limit]
 

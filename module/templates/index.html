@@ -132,9 +132,9 @@
                                 >
                                     <span class="flex items-center gap-2">
                                         已完成
-                                        <span x-show="completedTasks.length > 0"
+                                        <span x-show="completedTotal > 0"
                                               class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md bg-green-500 text-white min-w-[1.5rem] justify-center"
-                                              x-text="completedTasks.length"></span>
+                                              x-text="completedTotal"></span>
                                     </span>
                                 </button>
                                 <button
@@ -431,6 +431,7 @@
                     <input
                         type="text"
                         x-model="completedSearch"
+                        @input.debounce.300ms="resetCompletedList()"
                         placeholder="搜索任务ID或文件名..."
                         class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                     >
@@ -443,18 +444,18 @@
             </div>
 
             <!-- Select All Bar -->
-            <div x-show="filteredCompletedTasks.length > 0" class="mb-3 flex items-center justify-between">
+            <div x-show="completedTasks.length > 0" class="mb-3 flex items-center justify-between">
                 <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-500 hover:text-gray-700">
                     <input type="checkbox" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        :checked="selectedTasks.length === filteredCompletedTasks.length && filteredCompletedTasks.length > 0"
+                        :checked="selectedTasks.length === completedTasks.length && completedTasks.length > 0"
                         @change="toggleSelectAll('completed')">
                     全选
                 </label>
-                <span class="text-xs text-gray-400" x-text="filteredCompletedTasks.length + ' / ' + completedTasks.length + ' 个任务'"></span>
+                <span class="text-xs text-gray-400" x-text="completedTasks.length + ' / ' + completedTotal + ' 个任务'"></span>
             </div>
 
             <!-- Empty State -->
-            <div x-show="completedTasks.length === 0" class="text-center py-20">
+            <div x-show="completedTotal === 0 && !completedSearch" class="text-center py-20">
                 <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -465,7 +466,7 @@
             </div>
 
             <!-- Search No Results -->
-            <div x-show="completedTasks.length > 0 && filteredCompletedTasks.length === 0" class="text-center py-16">
+            <div x-show="completedTasks.length === 0 && completedSearch && !completedLoading" class="text-center py-16">
                 <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <svg class="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -477,7 +478,7 @@
 
             <!-- Completed Task Cards -->
             <div class="space-y-3">
-                <template x-for="task in filteredCompletedTasks" :key="task.task_id">
+                <template x-for="task in completedTasks" :key="task.task_id">
                     <div class="checkbox-row card-hover bg-white rounded-xl p-4 border border-gray-100 fade-in shadow-sm">
                         <div class="flex items-start gap-3">
                             <!-- Checkbox -->
@@ -540,6 +541,27 @@
                         </div>
                     </div>
                 </template>
+
+                <!-- Loading indicator -->
+                <div x-show="completedLoading" class="text-center py-4">
+                    <svg class="animate-spin w-6 h-6 text-blue-500 mx-auto" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <p class="text-sm text-gray-400 mt-2">加载中...</p>
+                </div>
+
+                <!-- Load more indicator -->
+                <div x-show="!completedHasMore && completedTasks.length > 0" class="text-center py-4">
+                    <p class="text-xs text-gray-400">已加载全部 <span x-text="completedTotal"></span> 条</p>
+                </div>
+
+                <!-- Manual load more button (fallback) -->
+                <div x-show="completedHasMore && !completedLoading && completedTasks.length > 0" class="text-center py-3">
+                    <button @click="loadMoreCompleted()" class="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200">
+                        加载更多
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -666,25 +688,28 @@
             isDownloading: true,
             activeTasks: [],
             completedTasks: [],
+            completedTotal: 0,
+            completedOffset: 0,
+            completedLimit: 100,
+            completedHasMore: true,
+            completedLoading: false,
             failedTasks: [],
             pendingTasks: [],
             allTasks: [],
             selectedTasks: [],
             completedSearch: '',
+            completedSearchTimer: null,
+            completedLastTotal: 0,
+            scrollListener: null,
             toast: { show: false, message: '', type: 'success' },
             pollTimer: null,
 
             get filteredCompletedTasks() {
-                if (!this.completedSearch || !this.completedSearch.trim()) {
-                    return this.completedTasks;
-                }
-                const q = this.completedSearch.trim().toLowerCase();
-                return this.completedTasks.filter(t => {
-                    const taskIdDisplay = (t.task_id_display || '').toLowerCase();
-                    const taskId = (t.task_id || '').toLowerCase();
-                    const filename = (t.filename || '').toLowerCase();
-                    return taskIdDisplay.includes(q) || taskId.includes(q) || filename.includes(q);
-                });
+                return this.completedTasks;
+            },
+
+            get completedCountDisplay() {
+                return this.completedTotal;
             },
 
             async init() {
@@ -692,7 +717,7 @@
                 await this.fetchDownloadState();
                 await this.fetchActive();
                 await this.fetchPending();
-                await this.fetchCompleted();
+                await this.fetchCompleted(true);
                 this.pollTimer = setInterval(() => {
                     this.fetchDownloadStatus();
                     this.fetchActive();
@@ -701,10 +726,83 @@
                 this.pendingPollTimer = setInterval(() => {
                     this.fetchPending();
                 }, 5000);
-                // Completed list refreshes less frequently
+                // Completed: poll count only, fetch increment if new completions
                 this.completedPollTimer = setInterval(() => {
-                    this.fetchCompleted();
+                    this.pollCompletedCount();
                 }, 10000);
+                // Scroll listener for infinite loading
+                this.scrollListener = () => this.onScroll();
+                window.addEventListener('scroll', this.scrollListener);
+            },
+
+            onScroll() {
+                if (this.activeTab !== 'completed') return;
+                if (this.completedLoading || !this.completedHasMore) return;
+                const scrollTop = document.documentElement.scrollTop;
+                const scrollHeight = document.documentElement.scrollHeight;
+                const clientHeight = document.documentElement.clientHeight;
+                if (scrollTop + clientHeight >= scrollHeight - 300) {
+                    this.loadMoreCompleted();
+                }
+            },
+
+            async pollCompletedCount() {
+                if (this.completedSearch) return; // Don't poll during search
+                try {
+                    const res = await fetch('/get_completed_count');
+                    const data = await res.json();
+                    const newTotal = data.total;
+                    if (newTotal > this.completedLastTotal) {
+                        const diff = newTotal - this.completedLastTotal;
+                        this.completedLastTotal = newTotal;
+                        this.completedTotal = newTotal;
+                        // Fetch only the new items (prepend)
+                        const res2 = await fetch(`/get_download_list?already_down=true&offset=0&limit=${diff}`);
+                        const data2 = await res2.json();
+                        const newTasks = (data2.tasks || data2).filter(t => t.download_progress_raw >= 100);
+                        // Prepend new tasks, avoid duplicates
+                        const existingIds = new Set(this.completedTasks.map(t => t.task_id));
+                        const fresh = newTasks.filter(t => !existingIds.has(t.task_id));
+                        if (fresh.length > 0) {
+                            this.completedTasks = [...fresh, ...this.completedTasks];
+                        }
+                    }
+                } catch(e) {}
+            },
+
+            async loadMoreCompleted() {
+                if (this.completedLoading || !this.completedHasMore) return;
+                this.completedLoading = true;
+                try {
+                    const searchParam = this.completedSearch ? `&search=${encodeURIComponent(this.completedSearch)}` : '';
+                    const res = await fetch(`/get_download_list?already_down=true&offset=${this.completedOffset}&limit=${this.completedLimit}${searchParam}`);
+                    const data = await res.json();
+                    const tasks = data.tasks || data;
+                    const newTasks = tasks.filter(t => t.download_progress_raw >= 100);
+                    this.completedTasks = [...this.completedTasks, ...newTasks];
+                    this.completedOffset += newTasks.length;
+                    this.completedTotal = data.total || this.completedTasks.length;
+                    this.completedLastTotal = this.completedTotal;
+                    if (newTasks.length < this.completedLimit) {
+                        this.completedHasMore = false;
+                    }
+                } catch(e) {}
+                this.completedLoading = false;
+            },
+
+            onCompletedSearchInput() {
+                clearTimeout(this.completedSearchTimer);
+                this.completedSearchTimer = setTimeout(() => {
+                    this.resetCompletedList();
+                }, 300);
+            },
+
+            resetCompletedList() {
+                this.completedTasks = [];
+                this.completedOffset = 0;
+                this.completedHasMore = true;
+                this.completedLoading = false;
+                this.loadMoreCompleted();
             },
 
             async fetchVersion() {
@@ -740,16 +838,16 @@
                 } catch(e) {}
             },
 
-            async fetchCompleted() {
-                            try {
-                                const res = await fetch('/get_download_list?already_down=true');
-                                const data = await res.json();
-                                const tasks = data.tasks || data;
-                                const newCompleted = tasks.filter(t => t.download_progress_raw >= 100);
-                    // Only update if data actually changed (avoid unnecessary re-render)
-                    if (JSON.stringify(newCompleted) !== JSON.stringify(this.completedTasks)) {
-                        this.completedTasks = newCompleted;
-                    }
+            async fetchCompleted(reset = false) {
+                if (reset) {
+                    this.completedTasks = [];
+                    this.completedOffset = 0;
+                    this.completedHasMore = true;
+                    this.completedLoading = false;
+                }
+                await this.loadMoreCompleted();
+                // Also fetch failed tasks
+                try {
                     const failedRes = await fetch('/get_failed_downloads');
                     const failedData = await failedRes.json();
                     this.failedTasks = failedData;
@@ -808,7 +906,7 @@
                 let tasks;
                 if (tab === 'active') tasks = this.activeTasks;
                 else if (tab === 'pending') tasks = this.pendingTasks;
-                else if (tab === 'completed') tasks = this.filteredCompletedTasks;
+                else if (tab === 'completed') tasks = this.completedTasks;
                 else tasks = this.failedTasks;
 
                 const allIds = tasks.map(t => t.task_id);
