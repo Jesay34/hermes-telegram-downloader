@@ -1844,7 +1844,7 @@ async def start_message_monitor():
         await asyncio.sleep(60)  # 每60秒检查一次
 async def _consume_one_pending():
     """Consume exactly one pending task from bot_tasks.json.
-    Single-shot, no loop.
+    Single-shot, no loop. Sends TG notification on consumption.
     """
     import logging
     logger = logging.getLogger("bot.pending")
@@ -1861,6 +1861,7 @@ async def _consume_one_pending():
         chat_id = task_data.get("chat_id")
         extra = task_data.get("extra_data", {}) or {}
         msg_id = extra.get("msg_id")
+        from_user_id = task_data.get("from_user_id", "")
         if not chat_id or not msg_id:
             return
         client = _bot.client
@@ -1893,6 +1894,20 @@ async def _consume_one_pending():
         update_download_state(task_id, "downloading")
         await add_download_task(msg, node)
         node.is_running = True
+
+        # Notify user that pending task started downloading
+        if from_user_id and _bot and _bot.bot:
+            try:
+                chat_name = getattr(msg.chat, "title", str(cid))
+                notify_text = (
+                    "📥 待下载任务开始下载\n"
+                    f"消息: {msg_id}\n"
+                    f"任务: {node.task_id_display}\n"
+                    f"群组: {chat_name}"
+                )
+                await _bot.bot.send_message(int(from_user_id), notify_text)
+            except Exception as e:
+                logger.warning(f"Pending consumer notification failed: {e}")
     except Exception as e:
         logger.warning(f"Pending consumer error: {e}")
 
