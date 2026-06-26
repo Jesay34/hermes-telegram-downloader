@@ -515,6 +515,24 @@ async def download_media(
                     f"Message[{message.id}]: {_t('Timing out after 3 reties, download skipped.')}"
                 )
                 error_message = "下载超时（重试3次后失败）"
+        except OSError as e:
+            # Connection-level error (timeout, reset, proxy disconnect).
+            # Exponential backoff: 10s, 20s, 40s between retries to avoid
+            # reconnect storms when multiple tasks fail simultaneously.
+            _cleanup_temp_file(temp_file_name)
+            backoff = 10 * (2 ** retry)
+            logger.warning(
+                f"Message[{message.id}] {ui_file_name}: connection error ({type(e).__name__}), "
+                f"retry {retry + 1}/3 after {backoff}s backoff"
+            )
+            error_message = f"连接错误: {str(e)[:80]}"
+            await asyncio.sleep(backoff)
+            message = await fetch_message(client, message)
+            if _check_timeout(retry, message.id):
+                logger.error(
+                    f"Message[{message.id}] {ui_file_name}: connection failed after 3 retries"
+                )
+                error_message = f"连接错误（重试3次后失败）"
         except Exception as e:
             _cleanup_temp_file(temp_file_name)
             logger.error(
@@ -680,6 +698,15 @@ async def stop_server(client: pyrogram.Client):
 
 def main():
     """Main function"""
+    # ── Patch A: Increase TCP timeout to 900s (15 min) ──
+    # Pyrogram default TCP.TIMEOUT=10s causes reconnect storms when TG throttles
+    # downloads — each chunk request waits >10s for a response, triggering
+    # connection teardown + MTProto re-handshake, producing massive upload traffic.
+    # Xray proxy has no idle timeout, so 900s is safe.
+    from pyrogram.connection.transport.tcp import TCP as _TCP
+    _TCP.TIMEOUT = 900
+    logger.info(f"Patched TCP.TIMEOUT: 10s -> {_TCP.TIMEOUT}s")
+
     tasks = []
     client = HookClient(
         "media_downloader", api_id=app.api_id, api_hash=app.api_hash,
