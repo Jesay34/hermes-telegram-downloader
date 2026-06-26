@@ -42,8 +42,32 @@ def get_download_result() -> dict:
 
 
 def get_total_download_speed() -> int:
-    """get total download speed"""
-    return _total_download_speed
+    """get total download speed — sum of all active (non-paused, non-completed, non-stale) task speeds.
+
+    This replaces the old independent global accumulator approach which used a separate
+    time window from individual task speeds, causing the total to never equal the sum of
+    individual speeds. Now we simply sum the per-task speeds, with a staleness check:
+    if a task's speed hasn't been updated in 3 seconds (no Pyrogram callback), treat it as 0.
+    """
+    import time as _time
+    now = _time.time()
+    total = 0
+    for chat_id, messages in _download_result.items():
+        for msg_id, value in messages.items():
+            # Skip completed tasks
+            if value.get("down_byte", 0) >= value.get("total_size", 0) and value.get("total_size", 0) > 0:
+                continue
+            composite_key = f"{chat_id}_{msg_id}"
+            # Skip paused tasks
+            if is_task_paused(composite_key) or is_task_paused(value.get("task_id", "")):
+                continue
+            speed = value.get("download_speed", 0)
+            # Staleness check: if no callback update in 3 seconds, speed is stale → 0
+            last_update = value.get("end_time", 0)
+            if speed > 0 and (now - last_update) > 3.0:
+                speed = 0
+            total += int(speed)
+    return total
 
 
 def get_download_state() -> DownloadState:

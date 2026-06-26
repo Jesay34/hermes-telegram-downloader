@@ -416,15 +416,35 @@
 
         <!-- Completed Downloads Tab -->
         <div x-show="activeTab === 'completed'" x-transition:enter="fade-in">
+            <!-- Search Bar -->
+            <div x-show="completedTasks.length > 0" class="mb-3">
+                <div class="relative max-w-md">
+                    <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input
+                        type="text"
+                        x-model="completedSearch"
+                        placeholder="搜索任务ID或文件名..."
+                        class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    >
+                    <button x-show="completedSearch" @click="completedSearch = ''" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
             <!-- Select All Bar -->
-            <div x-show="completedTasks.length > 0" class="mb-3 flex items-center justify-between">
+            <div x-show="filteredCompletedTasks.length > 0" class="mb-3 flex items-center justify-between">
                 <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-500 hover:text-gray-700">
                     <input type="checkbox" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        :checked="selectedTasks.length === completedTasks.length && completedTasks.length > 0"
+                        :checked="selectedTasks.length === filteredCompletedTasks.length && filteredCompletedTasks.length > 0"
                         @change="toggleSelectAll('completed')">
                     全选
                 </label>
-                <span class="text-xs text-gray-400" x-text="completedTasks.length + ' 个任务'"></span>
+                <span class="text-xs text-gray-400" x-text="filteredCompletedTasks.length + ' / ' + completedTasks.length + ' 个任务'"></span>
             </div>
 
             <!-- Empty State -->
@@ -438,9 +458,20 @@
                 <p class="text-gray-400 text-sm">完成的下载会在这里显示</p>
             </div>
 
+            <!-- Search No Results -->
+            <div x-show="completedTasks.length > 0 && filteredCompletedTasks.length === 0" class="text-center py-16">
+                <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+                <h3 class="text-gray-500 font-medium mb-1">未找到匹配的任务</h3>
+                <p class="text-gray-400 text-sm">尝试其他关键词</p>
+            </div>
+
             <!-- Completed Task Cards -->
             <div class="space-y-3">
-                <template x-for="task in completedTasks" :key="task.task_id">
+                <template x-for="task in filteredCompletedTasks" :key="task.task_id">
                     <div class="checkbox-row card-hover bg-white rounded-xl p-4 border border-gray-100 fade-in shadow-sm">
                         <div class="flex items-start gap-3">
                             <!-- Checkbox -->
@@ -633,8 +664,22 @@
             pendingTasks: [],
             allTasks: [],
             selectedTasks: [],
+            completedSearch: '',
             toast: { show: false, message: '', type: 'success' },
             pollTimer: null,
+
+            get filteredCompletedTasks() {
+                if (!this.completedSearch || !this.completedSearch.trim()) {
+                    return this.completedTasks;
+                }
+                const q = this.completedSearch.trim().toLowerCase();
+                return this.completedTasks.filter(t => {
+                    const taskIdDisplay = (t.task_id_display || '').toLowerCase();
+                    const taskId = (t.task_id || '').toLowerCase();
+                    const filename = (t.filename || '').toLowerCase();
+                    return taskIdDisplay.includes(q) || taskId.includes(q) || filename.includes(q);
+                });
+            },
 
             async init() {
                 await this.fetchVersion();
@@ -757,7 +802,7 @@
                 let tasks;
                 if (tab === 'active') tasks = this.activeTasks;
                 else if (tab === 'pending') tasks = this.pendingTasks;
-                else if (tab === 'completed') tasks = this.completedTasks;
+                else if (tab === 'completed') tasks = this.filteredCompletedTasks;
                 else tasks = this.failedTasks;
 
                 const allIds = tasks.map(t => t.task_id);

@@ -158,11 +158,19 @@ def get_download_list():
                     continue
 
             progress = round(value["down_byte"] / value["total_size"] * 100, 1) if value["total_size"] > 0 else 0
-            download_speed = format_byte(value["download_speed"]) + "/s"
 
-            # ETA calculation
+            # Staleness check: if speed hasn't been updated in 3s (no Pyrogram callback), show 0
+            import time as _now
+            raw_speed = value["download_speed"]
+            if raw_speed > 0 and not is_already_down:
+                last_update = value.get("end_time", 0)
+                if (_now.time() - last_update) > 3.0:
+                    raw_speed = 0
+            download_speed = format_byte(raw_speed) + "/s"
+
+            # ETA calculation (use stale-checked speed)
             eta = ""
-            speed = value["download_speed"]
+            speed = raw_speed
             if speed > 0 and not is_already_down:
                 remaining = value["total_size"] - value["down_byte"]
                 eta_seconds = int(remaining / speed)
