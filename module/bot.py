@@ -259,47 +259,48 @@ class DownloadBot:
         1. 'pending' - created but never started downloading → re-queue fresh
         2. 'downloading' - was actively downloading → re-execute (resume for forward, re-download for direct)
         """
-        pending_tasks = []
-        downloading_tasks = []
+        all_tasks = []
         try:
             await asyncio.sleep(5)  # Wait for bot to fully start
             running_tasks = get_running_tasks()
             if not running_tasks:
                 return
 
-            # Split by download_state
-            pending_tasks = [t for t in running_tasks if t.get("download_state", "pending") == "pending"]
-            downloading_tasks = [t for t in running_tasks if t.get("download_state") == "downloading"]
+            # All tasks go through pending queue — no more direct recovery.
+            # This controls download concurrency and prevents FLOOD_WAIT storms
+            # on restart (previously 100+ tasks would resume simultaneously).
+            all_tasks = running_tasks
 
-            if not pending_tasks and not downloading_tasks:
+            if not all_tasks:
                 return
 
-            logger.info(f"Found {len(downloading_tasks)} interrupted + {len(pending_tasks)} pending tasks, recovering...")
+            # Reset all tasks to pending state so _consume_one_pending picks them up
+            from module.task_store import update_download_state
+            for task_data in all_tasks:
+                tid = task_data.get("task_id")
+                if tid is not None and task_data.get("download_state") != "pending":
+                    update_download_state(tid, "pending")
 
-            # Phase 1: Recover actively downloading tasks first (were interrupted mid-download)
-            for task_data in downloading_tasks:
-                await self._recover_single_task(task_data)
-
-            # Phase 2: Pending tasks stay pending
-            if pending_tasks:
-                logger.info(f"Skipping {len(pending_tasks)} pending tasks during recovery")
-                self.app.loop.create_task(_consume_one_pending())
+            logger.info(f"Found {len(all_tasks)} tasks, all queued as pending (will consume one by one)")
 
             # Start periodic pending consumer loop (60s interval)
             if not hasattr(self, "_pending_loop_started") or not self._pending_loop_started:
                 self.app.loop.create_task(_pending_consumer_loop())
                 self._pending_loop_started = True
 
+            # Kick off first consumption immediately
+            self.app.loop.create_task(_consume_one_pending())
+
         except Exception as e:
             logger.warning(f"Task recovery failed: {e}")
 
-        # After recovery, update persistent counter to max of all recovered task display IDs
+        # After recovery, update persistent counter to max of all task display IDs
         try:
             from module.task_store import _set_seq, _parse_seq_from_display, _lock
             max_seq = 0
             import time
             today = time.strftime('%m%d')
-            for task_data in (downloading_tasks + pending_tasks):
+            for task_data in all_tasks:
                 extra = task_data.get("extra_data", {}) or {}
                 display = extra.get("task_id_display", "")
                 if display:
@@ -309,7 +310,7 @@ class DownloadBot:
             if max_seq > 0:
                 with _lock:
                     _set_seq(today, max_seq)
-                logger.info(f"Updated persistent task counter to {max_seq} (after recovering {len(downloading_tasks) + len(pending_tasks)} tasks)")
+                logger.info(f"Updated persistent task counter to {max_seq} (after recovering {len(all_tasks)} tasks)")
         except Exception as e:
             logger.warning(f"Failed to update task counter after recovery: {e}")
 
