@@ -560,6 +560,24 @@ def web_remove_pending():
 async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_task_id=""):
     """Async helper: fetch the message and re-add to download queue"""
     logger = logging.getLogger("web.retry")
+
+    def _restore_failed(reason):
+        """Re-add to failed list if retry can't even start downloading."""
+        try:
+            from module.download_stat import add_failed_download
+            add_failed_download(
+                chat_id=chat_id,
+                msg_id=msg_id,
+                task_id=str(task_id) if task_id else "",
+                file_name="",
+                error_message=reason,
+                total_size=0,
+                source_link="",
+                from_user_id=str(from_user_id) if from_user_id else "",
+            )
+        except Exception:
+            pass
+
     try:
         try:
             cid = int(chat_id)
@@ -571,11 +589,19 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
         client = _bot.client
         if not client:
             logger.error("Retry failed: _bot.client is not available")
+            _restore_failed("重试失败: client不可用")
             return
 
-        msg = await client.get_messages(cid, int(msg_id))
+        try:
+            msg = await client.get_messages(cid, int(msg_id))
+        except Exception as e:
+            logger.error(f"Retry failed: get_messages error for {cid}/{msg_id}: {e}")
+            _restore_failed(f"重试失败: 获取消息异常 ({e})")
+            return
+
         if not msg or msg.empty:
             logger.error(f"Retry failed: message {msg_id} not found in chat {cid}")
+            _restore_failed("重试失败: 消息不存在或已删除")
             return
 
         from module.app import TaskNode, TaskType
@@ -627,3 +653,4 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
         logger.info(f"Retry: queued message {msg_id} from chat {cid} as task {node.task_id_display}")
     except Exception as e:
         logger.error(f"Retry failed for chat={chat_id} msg={msg_id}: {e}", exc_info=True)
+        _restore_failed(f"重试失败: {e}")
