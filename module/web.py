@@ -141,11 +141,10 @@ def get_app_version():
 @_flask_app.route("/get_download_list")
 def get_download_list():
     """Get download list with task_id and status"""
-    from module.download_stat import load_downloads, get_download_result
-    r = get_download_result()
-    total = sum(len(v) for v in r.values())
-    if total == 0:
-        load_downloads()
+    from module.download_stat import get_download_result
+    # Removed: load_downloads() on empty result — it overwrites runtime data
+    # with stale disk data when all downloads happen to be between states.
+    # load_downloads() is already called at startup; trust the in-memory state.
     if request.args.get("already_down") is None:
         return "[]"
 
@@ -455,7 +454,7 @@ def web_batch_retry():
             download_filter=None,
             from_user_id=from_user_id or (int(chat_id) if str(chat_id).lstrip("-").isdigit() else chat_id),
             task_type="retry",
-            extra_data={"source_task_id": task_id, "msg_id": msg_id, "pending": True},
+            extra_data={"source_task_id": task_id, "message_id": msg_id, "pending": True},
         )
 
         # Submit async retry
@@ -583,7 +582,7 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
 
         node = TaskNode(
             chat_id=cid,
-            from_user_id=cid,
+            from_user_id=from_user_id or cid,
             reply_message_id=0,
             replay_message="WebUI retry",
             limit=1,
@@ -602,12 +601,14 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
             end_offset_id=0,
             limit=1,
             download_filter=None,
-            from_user_id=cid,
+            from_user_id=from_user_id or cid,
             task_type="download",
-            extra_data={"task_id_display": node.task_id_display, "msg_id": msg_id},
+            extra_data={"task_id_display": node.task_id_display, "message_id": msg_id},
         )
 
-        # Task stays pending -- _consume_pending_tasks will pick it up later
+        # Actually queue the download — without this the task stays pending forever
+        from media_downloader import add_download_task
+        await _bot.add_download_task(msg, node)
         node.is_running = True
 
 

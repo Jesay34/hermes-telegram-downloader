@@ -81,11 +81,13 @@ def _load_all() -> list:
 
 
 def _save_all(tasks: list):
-    """Save all tasks to file."""
+    """Save all tasks to file (atomic write via tmp + os.replace)."""
     try:
         os.makedirs(os.path.dirname(_TASKS_FILE), exist_ok=True)
-        with open(_TASKS_FILE, "w", encoding="utf-8") as f:
+        tmp = _TASKS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(tasks, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, _TASKS_FILE)
     except Exception as e:
         logger.warning(f"Failed to save bot tasks: {e}")
 

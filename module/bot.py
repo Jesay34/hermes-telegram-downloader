@@ -104,16 +104,10 @@ def _cleanup_stopped_task(node):
         if removed > 0:
             logger.info(f"Cleaned up {removed} download entries for stopped task {task_id_display}")
         else:
-            # Fallback: even if no download_result entry, record a generic failed entry
-            add_failed_download(
-                chat_id=node.chat_id,
-                msg_id=0,
-                task_id=task_id_display,
-                file_name="",
-                error_message="手动终止",
-                total_size=0,
-                    from_user_id=getattr(node, "from_user_id", "") or "",
-            )
+            # No download_result entries found — download never started or already cleaned up.
+            # Don't write empty failed records (msg_id=0, file_name="") — they're useless
+            # and can't be retried via WebUI.
+            logger.info(f"Stopped task {task_id_display} had no active download entries to clean")
     except Exception as e:
         logger.warning(f"Failed to cleanup stopped task {getattr(node, 'task_id_display', node.task_id)}: {e}")
 
@@ -291,6 +285,11 @@ class DownloadBot:
                 logger.info(f"Skipping {len(pending_tasks)} pending tasks during recovery")
                 self.app.loop.create_task(_consume_one_pending())
 
+            # Start periodic pending consumer loop (60s interval)
+            if not hasattr(self, "_pending_loop_started") or not self._pending_loop_started:
+                self.app.loop.create_task(_pending_consumer_loop())
+                self._pending_loop_started = True
+
         except Exception as e:
             logger.warning(f"Task recovery failed: {e}")
 
@@ -412,6 +411,7 @@ class DownloadBot:
     async def _recover_forward_task(self, task_data, node, offset_id):
         """Recover a forward task from last checkpoint."""
         from module.pyrogram_extension import report_bot_status
+        forward_failed = False
         try:
             async for item in get_chat_history_v2(
                 self.client, node.chat_id,
@@ -426,10 +426,15 @@ class DownloadBot:
                 if node.is_stop_transmission:
                     break
         except Exception as e:
+            forward_failed = True
             logger.warning(f"Forward recovery failed for task {node.task_id}: {e}")
         finally:
             await report_bot_status(self.bot, node, immediate_reply=True)
-            node.stop_transmission()
+            # Only mark as stopped if forward actually failed (exception thrown).
+            # For non-protected content, total_task stays 0 because forward_normal_content
+            # doesn't use add_download_task — that's normal, not a failure.
+            if forward_failed:
+                node.stop_transmission()
             complete_task(node.task_id)
 
     async def _recover_direct_task(self, task_data, node):
@@ -497,7 +502,8 @@ class DownloadBot:
             logger.warning(f"Direct recovery failed for task {node.task_id}: {e}")
         finally:
             await report_bot_status(self.bot, node, immediate_reply=True)
-            node.stop_transmission()
+            if not success:
+                node.stop_transmission()
             if success:
                 complete_task(node.task_id)
             else:
@@ -1687,6 +1693,7 @@ async def forward_message_impl(
     )
 
     if not node.has_protected_content:
+        forward_failed = False
         try:
             async for item in get_chat_history_v2(  # type: ignore
                 _bot.client,
@@ -1707,6 +1714,7 @@ async def forward_message_impl(
                     )
                     break
         except Exception as e:
+            forward_failed = True
             await client.edit_message_text(
                 message.from_user.id,
                 node.reply_message_id,
@@ -1714,7 +1722,9 @@ async def forward_message_impl(
             )
         finally:
             await report_bot_status(client, node, immediate_reply=True)
-            node.stop_transmission()
+            # Only mark as stopped if forward threw an exception
+            if forward_failed:
+                node.stop_transmission()
             complete_task(node.task_id)
     else:
         await forward_msg(node, offset_id)
@@ -1884,7 +1894,7 @@ async def _consume_one_pending():
             from module.app import TaskNode
             node = TaskNode(
                 chat_id=cid,
-                from_user_id=chat_id,
+                from_user_id=from_user_id or cid,
                 reply_message_id=0,
                 limit=1,
                 bot=_bot.bot,
@@ -1910,6 +1920,28 @@ async def _consume_one_pending():
                 logger.warning(f"Pending consumer notification failed: {e}")
     except Exception as e:
         logger.warning(f"Pending consumer error: {e}")
+
+
+async def _pending_consumer_loop():
+    """Periodic retry for pending tasks. Runs every 60s.
+    
+    If _consume_one_pending fails (e.g. get_messages throws due to
+    network blip), the pending task stays in bot_tasks.json. Without
+    this loop, it would be stuck forever if no other task completes
+    to trigger consumption.
+    """
+    import logging
+    logger = logging.getLogger("bot.pending_loop")
+    while True:
+        try:
+            await asyncio.sleep(60)
+            from module.task_store import get_pending_tasks
+            if get_pending_tasks():
+                await _consume_one_pending()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Pending consumer loop error: {e}")
 
 
 async def set_listen_forward_msg(
