@@ -1860,7 +1860,7 @@ async def _consume_one_pending():
             return
         chat_id = task_data.get("chat_id")
         extra = task_data.get("extra_data", {}) or {}
-        msg_id = extra.get("msg_id")
+        msg_id = extra.get("message_id") or extra.get("source_message_id")
         from_user_id = task_data.get("from_user_id", "")
         if not chat_id or not msg_id:
             return
