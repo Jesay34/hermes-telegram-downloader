@@ -179,6 +179,9 @@ class TaskNode:
         self.topic_id = topic_id
         self.reply_to_message = None
         self.cloud_drive_upload_stat_dict: dict = {}
+        self.source_chat_title: str = ""
+        self.source_chat_id: int = 0
+        self.source_message_id: int = 0
 
         # Generate sequential display id (persistent across restarts)
         if task_id_display:

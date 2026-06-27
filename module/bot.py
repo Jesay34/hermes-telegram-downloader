@@ -1860,10 +1860,16 @@ async def _consume_one_pending():
     import logging
     logger = logging.getLogger("bot.pending")
     try:
-        from module.task_store import get_pending_tasks, update_download_state, remove_task
+        from module.task_store import get_pending_tasks, update_download_state, remove_task, get_downloading_tasks
         from media_downloader import add_download_task
         pending = get_pending_tasks()
         if not pending:
+            return
+        # Concurrency guard: don't exceed max_download_task active downloads
+        max_tasks = getattr(_bot.app, 'max_download_task', 5)
+        active = len(get_downloading_tasks())
+        if active >= max_tasks:
+            logger.debug(f"Pending consumer: {active}/{max_tasks} downloading, waiting")
             return
         task_data = pending[0]
         task_id = task_data.get("task_id")
