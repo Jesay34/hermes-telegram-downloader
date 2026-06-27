@@ -250,10 +250,6 @@ class DownloadBot:
                     from module.task_store import get_pending_tasks
                     if get_pending_tasks():
                         _bot.app.loop.create_task(_consume_one_pending())
-                        # Try to consume a second one to fill up to concurrency cap of 3
-                        await asyncio.sleep(0.5)
-                        if get_pending_tasks():
-                            _bot.app.loop.create_task(_consume_one_pending())
             await asyncio.sleep(3)
 
     async def recover_tasks(self):
@@ -2039,25 +2035,26 @@ async def _consume_one_pending():
 
 
 async def _pending_consumer_loop():
-    """Periodic retry for pending tasks. Runs every 60s.
-    
-    If _consume_one_pending fails (e.g. get_messages throws due to
-    network blip), the pending task stays in bot_tasks.json. Without
-    this loop, it would be stuck forever if no other task completes
-    to trigger consumption.
+    """Periodically fill the worker queue with pending tasks.
+
+    Runs every 5s (not 60s) to keep the 5-worker queue full at all times.
+    Each tick consumes up to max_download_task pending tasks so workers
+    never starve waiting for the consumer.
     """
     import logging
     logger = logging.getLogger("bot.pending_loop")
     while True:
         try:
-            await asyncio.sleep(60)
+            await asyncio.sleep(5)
             from module.task_store import get_pending_tasks
-            if get_pending_tasks():
-                await _consume_one_pending()
-                # Try to fill up to concurrency cap of 3
-                await asyncio.sleep(1)
-                if get_pending_tasks():
+            pending = get_pending_tasks()
+            if pending:
+                max_fill = getattr(_bot.app, 'max_download_task', 5)
+                # Fill up to max_download_task items per tick to keep
+                # all workers busy
+                for _ in range(min(len(pending), max_fill)):
                     await _consume_one_pending()
+                    await asyncio.sleep(0.3)  # small delay between get_messages calls
         except asyncio.CancelledError:
             break
         except Exception as e:
