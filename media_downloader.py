@@ -368,7 +368,16 @@ async def download_media(
     media_size = 0
     _media = None
     error_message = ""  # Track specific error reason
-    message = await fetch_message(client, message)
+    # fetch_message re-fetches the message to get a fresh file reference.
+    # But if the pending consumer just called get_messages seconds ago,
+    # this second call can hit TG rate limits and block indefinitely.
+    # Use a 60s timeout — if it fails, fall back to the original message
+    # (its file reference is still fresh from the consumer's get_messages).
+    try:
+        message = await asyncio.wait_for(fetch_message(client, message), timeout=60)
+    except (asyncio.TimeoutError, Exception) as e:
+        logger.debug(f"download_media: fetch_message timeout/error ({e}), using original message")
+        # Keep the original message — file reference is fresh from consumer's get_messages
 
     # Cache chat title from message object
     if message and message.chat:

@@ -1973,6 +1973,9 @@ async def _consume_one_pending():
         node = _bot.task_node.get(int(task_id)) if str(task_id).isdigit() else _bot.task_node.get(task_id)
         if not node:
             from module.app import TaskNode
+            # Preserve original task_id_display and source info from extra_data
+            # so recovered tasks keep their original display ID (e.g. 0626-784)
+            # instead of generating a new one (0628-1241)
             node = TaskNode(
                 chat_id=cid,
                 from_user_id=from_user_id or cid,
@@ -1980,7 +1983,11 @@ async def _consume_one_pending():
                 limit=1,
                 bot=_bot.bot,
                 task_id=task_id,
+                task_id_display=extra.get("task_id_display", ""),
             )
+            node.source_chat_id = extra.get("source_chat_id", 0)
+            node.source_message_id = extra.get("source_message_id", 0)
+            node.source_chat_title = extra.get("source_chat_title", "")
             _bot.add_task_node(node)
         update_download_state(task_id, "downloading")
         node.is_running = True
