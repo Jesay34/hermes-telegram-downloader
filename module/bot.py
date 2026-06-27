@@ -1889,9 +1889,44 @@ async def _consume_one_pending():
         except (ValueError, TypeError):
             cid = chat_id
         try:
-            msg = await client.get_messages(cid, int(msg_id))
+            msg = await asyncio.wait_for(client.get_messages(cid, int(msg_id)), timeout=300)
+        except asyncio.TimeoutError:
+            logger.warning(f"Pending consumer: get_messages TIMEOUT (300s) for chat {cid} msg {msg_id}, moving to failed")
+            try:
+                from module.download_stat import add_failed_download
+                task_id_display = extra.get("task_id_display", str(task_id))
+                add_failed_download(
+                    chat_id=cid,
+                    msg_id=msg_id,
+                    task_id=task_id_display,
+                    file_name="",
+                    error_message="获取消息超时（300秒），可能TG服务器限速或网络问题",
+                    total_size=0,
+                    source_link="",
+                    from_user_id=str(from_user_id) if from_user_id else "",
+                )
+            except Exception:
+                pass
+            remove_task(task_id)
+            return
         except Exception as e:
-            logger.warning(f"Pending consumer: get_messages failed for chat {cid} msg {msg_id}: {e}")
+            logger.warning(f"Pending consumer: get_messages failed for chat {cid} msg {msg_id}: {e}, moving to failed")
+            try:
+                from module.download_stat import add_failed_download
+                task_id_display = extra.get("task_id_display", str(task_id))
+                add_failed_download(
+                    chat_id=cid,
+                    msg_id=msg_id,
+                    task_id=task_id_display,
+                    file_name="",
+                    error_message=f"获取消息失败: {e}",
+                    total_size=0,
+                    source_link="",
+                    from_user_id=str(from_user_id) if from_user_id else "",
+                )
+            except Exception:
+                pass
+            remove_task(task_id)
             return
         if not msg or msg.empty:
             logger.warning(f"Pending consumer: msg {msg_id} not found in chat {cid}, removing")
