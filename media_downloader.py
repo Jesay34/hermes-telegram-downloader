@@ -593,6 +593,7 @@ async def worker(client: pyrogram.client.Client):
             item = await queue.get()
             message = item[0]
             node: TaskNode = item[1]
+            logger.info(f"Worker picked up message {message.id} from chat {node.chat_id} for task {node.task_id_display}")
             # Mark task as actively downloading (no longer pending)
             if node.task_id:
                 update_download_state(node.task_id, "downloading")
