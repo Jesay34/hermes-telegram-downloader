@@ -2030,6 +2030,7 @@ async def _consume_one_pending():
                 logger.warning(f"Pending consumer notification failed: {e}")
 
         await add_download_task(msg, node)
+        logger.info(f"Pending consumer: queued task {task_id} (msg {msg_id}) to download queue")
     except Exception as e:
         logger.warning(f"Pending consumer error: {e}")
 
