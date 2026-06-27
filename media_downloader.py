@@ -47,7 +47,7 @@ DATA_FILE_NAME = "data.yaml"
 APPLICATION_NAME = "media_downloader"
 app = Application(CONFIG_NAME, DATA_FILE_NAME, APPLICATION_NAME)
 
-queue: asyncio.Queue = asyncio.Queue()
+queue: asyncio.Queue = None  # Created in main() after event loop starts
 RETRY_TIME_OUT = 3
 
 logging.getLogger("pyrogram.session.session").addFilter(LogFilter())
@@ -726,6 +726,12 @@ def main():
         init_web(app)
         set_max_concurrent_transmissions(client, app.max_concurrent_transmissions)
         app.loop.run_until_complete(start_server(client))
+        # Create queue AFTER event loop is running to ensure it binds to the
+        # correct loop. Creating asyncio.Queue at module import time (before
+        # loop starts) can cause put/get to use different loop references,
+        # resulting in workers never receiving items.
+        global queue
+        queue = asyncio.Queue()
         logger.success(_t("Successfully started (Press Ctrl+C to stop)"))
         app.loop.create_task(download_all_chat(client))
         for _ in range(app.max_download_task):
