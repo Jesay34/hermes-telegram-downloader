@@ -212,7 +212,11 @@
             <div class="space-y-3">
                 <template x-for="task in activeTasks" :key="task.task_id">
                     <div class="checkbox-row card-hover rounded-xl p-4 border fade-in bg-white shadow-sm"
-                         :class="task.status === 'paused' ? 'border-amber-200' : 'border-gray-100'"
+                         :class="{
+                             'border-amber-200': task.status === 'paused',
+                             'border-gray-200': task.status === 'waiting',
+                             'border-gray-100': task.status !== 'paused' && task.status !== 'waiting'
+                         }"
                          :id="'card-' + task.task_id">
                         <div class="flex items-start gap-3">
                             <!-- Checkbox -->
@@ -225,8 +229,16 @@
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 mb-1 flex-wrap">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                          :class="task.status === 'paused' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'"
-                                          x-text="task.status === 'paused' ? '已暂停' : '下载中'">
+                                          :class="{
+                                              'bg-amber-100 text-amber-700': task.status === 'paused',
+                                              'bg-blue-100 text-blue-700': task.status === 'active',
+                                              'bg-gray-100 text-gray-500': task.status === 'waiting'
+                                          }"
+                                          x-text="{
+                                              'paused': '已暂停',
+                                              'waiting': '等待中',
+                                              'active': '下载中'
+                                          }[task.status] || task.status">
                                     </span>
                                     <span class="text-xs text-gray-400 font-medium" x-text="task.chat_title || task.chat"></span>
                                     <span class="text-xs text-gray-300">|</span>
@@ -243,7 +255,11 @@
                                     <span x-text="task.total_size"></span>
                                     <span class="text-gray-300">|</span>
                                     <span class="font-mono font-medium"
-                                          :class="task.status === 'paused' ? 'text-amber-600' : 'text-blue-600'"
+                                          :class="{
+                                              'text-amber-600': task.status === 'paused',
+                                              'text-blue-600': task.status === 'active',
+                                              'text-gray-400': task.status === 'waiting'
+                                          }"
                                           x-text="task.download_speed"></span>
                                     <template x-if="task.eta">
                                         <span>

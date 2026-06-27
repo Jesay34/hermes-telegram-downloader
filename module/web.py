@@ -160,15 +160,15 @@ def get_download_list():
     result = []
     for chat_id, messages in download_result.items():
         for idx, value in messages.items():
-            is_already_down = value["down_byte"] == value["total_size"]
+            is_already_down = value["down_byte"] == value["total_size"] and value["total_size"] > 0
 
             if already_down and not is_already_down:
                 continue
             if not already_down:
-                # 在活跃列表中，过滤掉还没真正开始下载的条目
-                # (down_byte==0 且 start_time==end_time 表示 Pyrogram 回调还没触发)
-                if value["down_byte"] == 0 and value.get("start_time", 0) == value.get("end_time", 0):
-                    continue
+                # Show placeholder entries (down_byte==0, total_size==0) as "waiting"
+                # instead of filtering them out — pending consumer creates these
+                # so WebUI can display tasks that are queued but haven't started downloading yet
+                pass  # no filter — show everything that's not completed
 
             progress = round(value["down_byte"] / value["total_size"] * 100, 1) if value["total_size"] > 0 else 0
 
@@ -197,11 +197,13 @@ def get_download_list():
             # Internal key for operations (stable across restarts)
             task_id = f"{chat_id}_{idx}"
 
-            # Determine status: completed, paused, or active
+            # Determine status: completed, paused, waiting, or active
             if is_already_down:
                 status = "completed"
             elif is_task_paused(task_id) or is_task_paused(value.get("task_id", "")):
                 status = "paused"
+            elif value.get("total_size", 0) == 0 and value.get("down_byte", 0) == 0:
+                status = "waiting"
             else:
                 status = "active"
 
@@ -235,8 +237,8 @@ def get_download_list():
                 "chat": str(chat_id),
                 "chat_title": chat_title,
                 "id": str(idx),
-                "filename": os.path.basename(value["file_name"]),
-                "total_size": format_byte(value["total_size"]),
+                "filename": os.path.basename(value["file_name"]) if value.get("file_name") else f"msg_{idx} (等待下载)",
+                "total_size": format_byte(value["total_size"]) if value["total_size"] > 0 else "未知",
                 "total_size_bytes": value["total_size"],
                 "download_progress": str(progress),
                 "download_progress_raw": progress,

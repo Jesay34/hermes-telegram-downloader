@@ -329,6 +329,8 @@ async def update_download_status(
             download_speed = max(download_speed, 0)
 
             _download_result[chat_id][message_id]["down_byte"] = down_byte
+            _download_result[chat_id][message_id]["total_size"] = total_size
+            _download_result[chat_id][message_id]["file_name"] = file_name
             _download_result[chat_id][message_id]["end_time"] = end_time
             _download_result[chat_id][message_id]["download_speed"] = download_speed
             _download_result[chat_id][message_id][
@@ -411,7 +413,7 @@ def save_downloads():
         completed = []
         for chat_id, messages in _download_result.items():
             for msg_id, value in messages.items():
-                if value["down_byte"] == value["total_size"]:
+                if value["down_byte"] == value["total_size"] and value["total_size"] > 0:
                     completed.append({
                         "task_id": str(value.get("task_id", "")),
                         "chat_id": str(chat_id),

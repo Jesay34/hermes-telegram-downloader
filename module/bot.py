@@ -250,6 +250,10 @@ class DownloadBot:
                     from module.task_store import get_pending_tasks
                     if get_pending_tasks():
                         _bot.app.loop.create_task(_consume_one_pending())
+                        # Try to consume a second one to fill up to concurrency cap of 3
+                        await asyncio.sleep(0.5)
+                        if get_pending_tasks():
+                            _bot.app.loop.create_task(_consume_one_pending())
             await asyncio.sleep(3)
 
     async def recover_tasks(self):
@@ -1853,6 +1857,10 @@ async def start_message_monitor():
             logger.exception(f"Error in message monitor: {e}")
 
         await asyncio.sleep(60)  # 每60秒检查一次
+
+# Global flood wait cooldown state (mutable dict to avoid global keyword)
+_flood_wait = {"until": 0.0, "reason": ""}
+
 async def _consume_one_pending():
     """Consume exactly one pending task from bot_tasks.json.
     Single-shot, no loop. Sends TG notification on consumption.
@@ -1865,11 +1873,11 @@ async def _consume_one_pending():
         pending = get_pending_tasks()
         if not pending:
             return
-        # Concurrency guard: don't exceed max_download_task active downloads
+        # Concurrency guard: allow up to 3 concurrent consuming tasks
         max_tasks = getattr(_bot.app, 'max_download_task', 5)
         active = len(get_downloading_tasks())
-        if active >= max_tasks:
-            logger.debug(f"Pending consumer: {active}/{max_tasks} downloading, waiting")
+        if active >= 3:  # cap at 3 concurrent consuming to speed up queue
+            logger.debug(f"Pending consumer: {active} downloading (cap 3), waiting")
             return
         task_data = pending[0]
         task_id = task_data.get("task_id")
@@ -1884,6 +1892,14 @@ async def _consume_one_pending():
         client = _bot.client
         if not client:
             return
+
+        # Check global flood wait cooldown
+        now = time.time()
+        if now < _flood_wait["until"]:
+            remaining = int(_flood_wait["until"] - now)
+            logger.debug(f"Pending consumer: FLOOD_WAIT cooldown, {remaining}s remaining ({_flood_wait['reason']})")
+            return
+
         try:
             cid = int(chat_id)
         except (ValueError, TypeError):
@@ -1908,6 +1924,28 @@ async def _consume_one_pending():
             except Exception:
                 pass
             remove_task(task_id)
+            return
+        except pyrogram.errors.exceptions.flood_420.FloodWait as e:
+            # Don't move to failed list — keep pending, set cooldown
+            wait_val = getattr(e, "value", 60)
+            _flood_wait["until"] = time.time() + wait_val + 5
+            _flood_wait["reason"] = f"FloodWait {wait_val}s on get_messages chat {cid} msg {msg_id}"
+            logger.warning(
+                f"Pending consumer: FLOOD_WAIT {wait_val}s on get_messages "
+                f"(chat {cid} msg {msg_id}), pausing consumer. Task stays pending."
+            )
+            # Notify user about rate limit pause
+            if from_user_id and _bot and _bot.bot:
+                try:
+                    notify_text = (
+                        f"⏸️ TG 限速暂停\n"
+                        f"需要等待 {wait_val} 秒\n"
+                        f"任务: {extra.get('task_id_display', str(task_id))} 保持待执行\n"
+                        f"原因: FloodWait (get_messages)"
+                    )
+                    await _bot.bot.send_message(int(from_user_id), notify_text)
+                except Exception:
+                    pass
             return
         except Exception as e:
             logger.warning(f"Pending consumer: get_messages failed for chat {cid} msg {msg_id}: {e}, moving to failed")
@@ -1946,6 +1984,29 @@ async def _consume_one_pending():
             _bot.add_task_node(node)
         update_download_state(task_id, "downloading")
         node.is_running = True
+
+        # Create placeholder in _download_result so WebUI shows the task immediately.
+        # Pyrogram's update_download_status will overwrite total_size/file_name/down_byte
+        # when the actual download starts.
+        from module.download_stat import _download_result
+        if cid not in _download_result:
+            _download_result[cid] = {}
+        if int(msg_id) not in _download_result[cid]:
+            _download_result[cid][int(msg_id)] = {
+                "down_byte": 0,
+                "total_size": 0,
+                "file_name": "",
+                "start_time": time.time(),
+                "end_time": 0,
+                "download_speed": 0,
+                "each_second_total_download": 0,
+                "task_id": task_id,
+                "task_id_display": getattr(node, "task_id_display", str(task_id)),
+                "source_chat_title": getattr(msg.chat, "title", "") or extra.get("source_chat_title", ""),
+                "source_chat_id": cid,
+                "source_message_id": int(msg_id),
+            }
+            logger.info(f"Placeholder created in _download_result for task {task_id} (chat {cid} msg {msg_id})")
 
         # Send notification BEFORE add_download_task to avoid race condition:
         # if we queue first, worker may finish a small file before send_message
@@ -1987,6 +2048,10 @@ async def _pending_consumer_loop():
             from module.task_store import get_pending_tasks
             if get_pending_tasks():
                 await _consume_one_pending()
+                # Try to fill up to concurrency cap of 3
+                await asyncio.sleep(1)
+                if get_pending_tasks():
+                    await _consume_one_pending()
         except asyncio.CancelledError:
             break
         except Exception as e:
