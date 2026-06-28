@@ -1865,7 +1865,7 @@ async def _consume_one_pending():
     logger = logging.getLogger("bot.pending")
     try:
         from module.task_store import get_pending_tasks, update_download_state, remove_task, get_downloading_tasks
-        from media_downloader import add_download_task
+        add_download_task = _bot.add_download_task
         pending = get_pending_tasks()
         if not pending:
             return
