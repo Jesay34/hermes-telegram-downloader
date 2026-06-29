@@ -401,7 +401,7 @@ def web_retry_task():
     try:
         if _app and _app.loop:
             asyncio.run_coroutine_threadsafe(
-                _async_retry_download(chat_id, msg_id, from_user_id, source_link=source_link),
+                _async_retry_download(chat_id, msg_id, from_user_id, source_link=source_link, original_task_id=task_id),
                 _app.loop,
             )
             return jsonify({"code": "1", "message": "已加入重试队列"})
@@ -465,7 +465,7 @@ def web_batch_retry():
         try:
             if _app and _app.loop:
                 asyncio.run_coroutine_threadsafe(
-                    _async_retry_download(chat_id, msg_id, from_user_id, placeholder_task_id=f"retry_{task_id}", source_link=source_link),
+                    _async_retry_download(chat_id, msg_id, from_user_id, placeholder_task_id=f"retry_{task_id}", source_link=source_link, original_task_id=task_id),
                     _app.loop,
                 )
                 queued += 1
@@ -561,13 +561,16 @@ def web_remove_pending():
     return jsonify({"code": "1", "message": "removed"})
 
 
-async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_task_id="", source_link=""):
+async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_task_id="", source_link="", original_task_id=""):
     """Async helper: fetch the message and re-add to download queue
 
     Args:
         source_link: If provided, use parse_link → get_messages to get a fresh
                      message copy. This is more reliable than direct get_messages
                      because it resolves the link the same way download_from_link does.
+        original_task_id: The original failed task_id, used to restore the failed
+                          entry if retry fails. Without this, the task "disappears"
+                          from the failed list.
     """
     logger = logging.getLogger("web.retry")
 
@@ -578,7 +581,7 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
             add_failed_download(
                 chat_id=chat_id,
                 msg_id=msg_id,
-                task_id=placeholder_task_id or "",
+                task_id=original_task_id or placeholder_task_id or "",
                 file_name="",
                 error_message=reason,
                 total_size=0,
@@ -612,11 +615,17 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
                 from module.pyrogram_extension import parse_link
                 link_chat_id, link_msg_id, _ = await parse_link(client, source_link)
                 if link_chat_id and link_msg_id:
-                    msg = await client.get_messages(link_chat_id, link_msg_id)
-                    if msg:
+                    link_msg = await client.get_messages(link_chat_id, link_msg_id)
+                    if link_msg and not link_msg.empty:
+                        msg = link_msg
                         logger.info(
                             f"Retry: source_link parse succeeded, "
                             f"got msg {msg.id} from chat {link_chat_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Retry: source_link got empty message for "
+                            f"{link_chat_id}/{link_msg_id}, falling back to direct get_messages"
                         )
             except Exception as e:
                 logger.warning(
@@ -624,7 +633,7 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
                     f"falling back to direct get_messages"
                 )
 
-        # Strategy 2: Fallback to direct get_messages
+        # Strategy 2: Fallback to direct get_messages with original chat_id/msg_id
         if not msg:
             msg = await client.get_messages(cid, int(msg_id))
 
