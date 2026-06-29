@@ -677,6 +677,119 @@
         </div>
     </main>
 
+    <!-- Delete Confirmation Modal -->
+    <div x-show="deleteModal.show" x-transition:enter="fade-in" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex items-center justify-center" style="display:none;">
+        <div class="absolute inset-0 bg-black/40" @click="deleteModal.show = false"></div>
+        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6 fade-in">
+            <!-- Header -->
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                     :class="deleteModal.fileExists ? 'bg-amber-100' : 'bg-gray-100'">
+                    <template x-if="deleteModal.fileExists">
+                        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                    </template>
+                    <template x-if="!deleteModal.fileExists">
+                        <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </template>
+                </div>
+                <h3 class="text-base font-semibold text-gray-900">确认删除任务</h3>
+            </div>
+
+            <!-- Single task info -->
+            <template x-if="!deleteModal.isBatch">
+                <div class="space-y-3">
+                    <p class="text-sm text-gray-600">确定要删除此任务吗？删除后无法恢复。</p>
+                    <template x-if="deleteModal.loading">
+                        <div class="flex items-center gap-2 text-sm text-gray-400">
+                            <svg class="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            正在检查文件...
+                        </div>
+                    </template>
+                    <template x-if="!deleteModal.loading">
+                        <div>
+                            <template x-if="deleteModal.fileExists">
+                                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                                    <div class="flex items-start gap-2">
+                                        <svg class="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                                        </svg>
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-medium text-amber-800 break-all" x-text="deleteModal.filename"></p>
+                                            <p class="text-xs text-amber-600 mt-0.5 break-all" x-text="deleteModal.filePath"></p>
+                                        </div>
+                                    </div>
+                                    <label class="flex items-center gap-2 cursor-pointer pt-1">
+                                        <input type="checkbox" x-model="deleteModal.deleteFile" class="w-4 h-4 rounded border-amber-300 text-red-600 focus:ring-red-500">
+                                        <span class="text-sm text-amber-800">同时删除本地文件</span>
+                                    </label>
+                                </div>
+                            </template>
+                            <template x-if="!deleteModal.fileExists">
+                                <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    <span class="text-sm text-gray-500">本地文件已不存在</span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Batch info -->
+            <template x-if="deleteModal.isBatch">
+                <div class="space-y-3">
+                    <p class="text-sm text-gray-600">
+                        确定要删除选中的 <span class="font-semibold" x-text="deleteModal.batchCount"></span> 个任务吗？删除后无法恢复。
+                    </p>
+                    <template x-if="deleteModal.loading">
+                        <div class="flex items-center gap-2 text-sm text-gray-400">
+                            <svg class="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            正在检查文件...
+                        </div>
+                    </template>
+                    <template x-if="!deleteModal.loading">
+                        <div class="space-y-2">
+                            <div class="flex items-center gap-4 text-sm">
+                                <span class="text-green-600">文件存在: <span class="font-semibold" x-text="deleteModal.batchFilesExist"></span></span>
+                                <span class="text-gray-400">文件不存在: <span class="font-semibold" x-text="deleteModal.batchFilesNotFound"></span></span>
+                            </div>
+                            <template x-if="deleteModal.batchFilesExist > 0">
+                                <label class="flex items-center gap-2 cursor-pointer bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                    <input type="checkbox" x-model="deleteModal.deleteFile" class="w-4 h-4 rounded border-amber-300 text-red-600 focus:ring-red-500">
+                                    <span class="text-sm text-amber-800">同时删除存在的本地文件</span>
+                                </label>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Actions -->
+            <div class="flex items-center justify-end gap-3 mt-6">
+                <button @click="deleteModal.show = false"
+                    class="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 border border-gray-200">
+                    取消
+                </button>
+                <button @click="executeDelete()"
+                    :disabled="deleteModal.loading"
+                    class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                    确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div x-show="toast.show" x-transition:enter="toast-enter" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
          class="fixed bottom-4 right-4 z-50 px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium"
@@ -713,6 +826,19 @@
             scrollListener: null,
             toast: { show: false, message: '', type: 'success' },
             pollTimer: null,
+            deleteModal: {
+                show: false,
+                loading: false,
+                isBatch: false,
+                taskIds: [],
+                fileExists: false,
+                filename: '',
+                filePath: '',
+                deleteFile: false,
+                batchCount: 0,
+                batchFilesExist: 0,
+                batchFilesNotFound: 0,
+            },
 
             get filteredCompletedTasks() {
                 return this.completedTasks;
@@ -929,6 +1055,12 @@
 
             async batchDelete() {
                 if (this.selectedTasks.length === 0) return;
+                // If on completed tab, show confirmation modal with file check
+                if (this.activeTab === 'completed') {
+                    this.confirmBatchDelete();
+                    return;
+                }
+                // Other tabs: direct delete without file option
                 try {
                     const res = await fetch('/batch_delete', {
                         method: 'POST',
@@ -998,7 +1130,132 @@
                 }
             },
 
+            async confirmDeleteTask(taskId) {
+                // Reset modal for single task
+                this.deleteModal = {
+                    show: true,
+                    loading: true,
+                    isBatch: false,
+                    taskIds: [taskId],
+                    fileExists: false,
+                    filename: '',
+                    filePath: '',
+                    deleteFile: false,
+                    batchCount: 0,
+                    batchFilesExist: 0,
+                    batchFilesNotFound: 0,
+                };
+                // Check file existence
+                try {
+                    const res = await fetch('/check_file_exists?task_id=' + encodeURIComponent(taskId), { method: 'POST' });
+                    const data = await res.json();
+                    if (data.code === '1') {
+                        this.deleteModal.fileExists = data.exists;
+                        this.deleteModal.filename = data.filename || '';
+                        this.deleteModal.filePath = data.path || '';
+                        this.deleteModal.deleteFile = data.exists;
+                    }
+                } catch(e) {}
+                this.deleteModal.loading = false;
+            },
+
+            async confirmBatchDelete() {
+                const taskIds = [...this.selectedTasks];
+                this.deleteModal = {
+                    show: true,
+                    loading: true,
+                    isBatch: true,
+                    taskIds: taskIds,
+                    fileExists: false,
+                    filename: '',
+                    filePath: '',
+                    deleteFile: false,
+                    batchCount: taskIds.length,
+                    batchFilesExist: 0,
+                    batchFilesNotFound: 0,
+                };
+                // Check each task's file existence
+                let existCount = 0;
+                let notFoundCount = 0;
+                for (const tid of taskIds) {
+                    try {
+                        const res = await fetch('/check_file_exists?task_id=' + encodeURIComponent(tid), { method: 'POST' });
+                        const data = await res.json();
+                        if (data.code === '1' && data.exists) {
+                            existCount++;
+                        } else {
+                            notFoundCount++;
+                        }
+                    } catch(e) {
+                        notFoundCount++;
+                    }
+                }
+                this.deleteModal.batchFilesExist = existCount;
+                this.deleteModal.batchFilesNotFound = notFoundCount;
+                this.deleteModal.deleteFile = existCount > 0;
+                this.deleteModal.loading = false;
+            },
+
+            async executeDelete() {
+                const dm = this.deleteModal;
+                if (dm.isBatch) {
+                    // Batch delete
+                    try {
+                        const body = { task_ids: dm.taskIds };
+                        if (dm.deleteFile) body.delete_file = true;
+                        const res = await fetch('/batch_delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                        });
+                        const data = await res.json();
+                        if (data.code === '1') {
+                            let msg = '已删除 ' + data.deleted + ' 个任务';
+                            if (dm.deleteFile && data.files_deleted > 0) {
+                                msg += '（' + data.files_deleted + ' 个文件已删除）';
+                            }
+                            this.showToast(msg, 'success');
+                            this.selectedTasks = [];
+                            this.fetchActive(); this.fetchCompleted();
+                        } else {
+                            this.showToast(data.message || '删除失败', 'error');
+                        }
+                    } catch(e) {
+                        this.showToast('网络错误', 'error');
+                    }
+                } else {
+                    // Single task delete
+                    try {
+                        const url = '/delete_task?task_id=' + encodeURIComponent(dm.taskIds[0]);
+                        if (dm.deleteFile) url += '&delete_file=true';
+                        const res = await fetch(url, { method: 'POST' });
+                        const data = await res.json();
+                        if (data.code === '1') {
+                            let msg = '任务已删除';
+                            if (dm.deleteFile && data.file_deleted) {
+                                msg = '任务和本地文件已删除';
+                            } else if (dm.deleteFile && data.file_error) {
+                                msg = '任务已删除（文件: ' + data.file_error + '）';
+                            }
+                            this.showToast(msg, 'success');
+                            this.fetchActive(); this.fetchCompleted();
+                        } else {
+                            this.showToast(data.message || '删除失败', 'error');
+                        }
+                    } catch(e) {
+                        this.showToast('网络错误', 'error');
+                    }
+                }
+                dm.show = false;
+            },
+
             async deleteTask(taskId) {
+                // If on completed tab, show confirmation modal
+                if (this.activeTab === 'completed') {
+                    this.confirmDeleteTask(taskId);
+                    return;
+                }
+                // Other tabs: direct delete
                 try {
                     const res = await fetch('/delete_task?task_id=' + encodeURIComponent(taskId), { method: 'POST' });
                     const data = await res.json();

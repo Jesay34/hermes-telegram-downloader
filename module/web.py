@@ -323,32 +323,86 @@ def web_resume_task():
     return jsonify({"code": "0", "message": "task not paused"})
 
 
-@_flask_app.route("/delete_task", methods=["POST"])
-def web_delete_task():
-    """Delete a specific download task"""
-    from module.pyrogram_extension import remove_download_cache
+@_flask_app.route("/check_file_exists", methods=["POST"])
+def web_check_file_exists():
+    """Check if the local file for a completed task exists.
+    Returns: {code, exists, path, filename}"""
     task_id = request.args.get("task_id")
     if not task_id:
         return jsonify({"code": "0", "message": "task_id required"})
-    # Find and clear download cache before deleting
+
+    file_path = None
     download_result = get_download_result()
     for chat_id, messages in download_result.items():
         for msg_id, value in messages.items():
             composite_key = f"{chat_id}_{msg_id}"
             if composite_key == str(task_id) or str(value.get("task_id", "")) == str(task_id):
+                file_path = value.get("file_name", "")
+                break
+        if file_path:
+            break
+
+    if not file_path:
+        return jsonify({"code": "1", "exists": False, "path": "", "filename": ""})
+
+    exists = os.path.isfile(file_path)
+    return jsonify({
+        "code": "1",
+        "exists": exists,
+        "path": file_path.replace("\\", "/"),
+        "filename": os.path.basename(file_path),
+    })
+
+
+@_flask_app.route("/delete_task", methods=["POST"])
+def web_delete_task():
+    """Delete a specific download task. If delete_file=true, also remove the local file."""
+    from module.pyrogram_extension import remove_download_cache
+    task_id = request.args.get("task_id")
+    if not task_id:
+        return jsonify({"code": "0", "message": "task_id required"})
+    delete_file = request.args.get("delete_file", "false").lower() == "true"
+
+    # Find file path before deleting (needed if delete_file=true)
+    file_path = None
+    download_result = get_download_result()
+    for chat_id, messages in download_result.items():
+        for msg_id, value in messages.items():
+            composite_key = f"{chat_id}_{msg_id}"
+            if composite_key == str(task_id) or str(value.get("task_id", "")) == str(task_id):
+                file_path = value.get("file_name", "")
                 remove_download_cache(chat_id, msg_id)
+
+    # Delete local file if requested
+    file_deleted = False
+    file_error = ""
+    if delete_file and file_path:
+        if os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+                file_deleted = True
+            except Exception as e:
+                file_error = str(e)
+        else:
+            file_error = "file not found"
+
     # Try active downloads first, then failed
     success = delete_task(task_id)
     if not success:
         success = remove_failed_download(task_id)
     if success:
-        return jsonify({"code": "1", "message": "deleted"})
+        return jsonify({
+            "code": "1",
+            "message": "deleted",
+            "file_deleted": file_deleted,
+            "file_error": file_error,
+        })
     return jsonify({"code": "0", "message": "task not found"})
 
 
 @_flask_app.route("/batch_delete", methods=["POST"])
 def web_batch_delete():
-    """Batch delete tasks by task_ids"""
+    """Batch delete tasks by task_ids. If delete_file=true in JSON body, also remove local files."""
     data = request.get_json(silent=True)
     if not data or "task_ids" not in data:
         return jsonify({"code": "0", "message": "task_ids required"})
@@ -356,6 +410,33 @@ def web_batch_delete():
     task_ids = data["task_ids"]
     if not isinstance(task_ids, list):
         return jsonify({"code": "0", "message": "task_ids must be a list"})
+
+    delete_file = data.get("delete_file", False)
+
+    # Collect file paths before deletion if delete_file is requested
+    files_deleted = 0
+    files_not_found = 0
+    if delete_file:
+        download_result = get_download_result()
+        for tid in task_ids:
+            file_path = None
+            for chat_id, messages in download_result.items():
+                for msg_id, value in messages.items():
+                    composite_key = f"{chat_id}_{msg_id}"
+                    if composite_key == str(tid) or str(value.get("task_id", "")) == str(tid):
+                        file_path = value.get("file_name", "")
+                        break
+                if file_path:
+                    break
+            if file_path:
+                if os.path.isfile(file_path):
+                    try:
+                        os.remove(file_path)
+                        files_deleted += 1
+                    except Exception:
+                        files_not_found += 1
+                else:
+                    files_not_found += 1
 
     deleted_active = batch_delete_tasks(task_ids)
     deleted_failed = batch_delete_failed(task_ids)
@@ -365,6 +446,8 @@ def web_batch_delete():
         "code": "1",
         "message": f"deleted {total} tasks",
         "deleted": total,
+        "files_deleted": files_deleted,
+        "files_not_found": files_not_found,
     })
 
 
