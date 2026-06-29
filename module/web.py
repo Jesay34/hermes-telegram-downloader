@@ -33,8 +33,16 @@ log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 
 _flask_app = Flask(__name__)
-
 _flask_app.secret_key = "tdl"
+# Always reload templates from disk on each request — needed for NAS deployments
+# where index.html is updated by the deploy script without restarting the container.
+_flask_app.config["TEMPLATES_AUTO_RELOAD"] = True
+# Disable response caching for index.html so browser/proxy don't serve stale versions
+# after a deploy.
+_flask_app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+# Force Jinja to not cache (belt-and-suspenders: ensure auto-reload really works)
+_flask_app.jinja_env.auto_reload = True
+_flask_app.jinja_env.cache = {}
 
 
 def get_flask_app() -> Flask:
