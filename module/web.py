@@ -123,13 +123,12 @@ def web_set_download_state():
 
     if state == "continue" and get_download_state() is DownloadState.StopDownload:
         set_download_state(DownloadState.Downloading)
-        return "pause"
 
     if state == "pause" and get_download_state() is DownloadState.Downloading:
         set_download_state(DownloadState.StopDownload)
-        return "continue"
 
-    return state
+    # Always return action based on actual current state
+    return "pause" if get_download_state() is DownloadState.Downloading else "continue"
 
 
 @_flask_app.route("/get_app_version")
