@@ -390,6 +390,7 @@ def web_retry_task():
     chat_id = target.get("chat_id")
     msg_id = target.get("msg_id")
     from_user_id = target.get("from_user_id", "") or ""
+    source_link = target.get("source_link", "") or ""
     if not chat_id or not msg_id:
         return jsonify({"code": "0", "message": "incomplete task data (missing chat_id/msg_id)"})
 
@@ -400,7 +401,7 @@ def web_retry_task():
     try:
         if _app and _app.loop:
             asyncio.run_coroutine_threadsafe(
-                _async_retry_download(chat_id, msg_id, from_user_id),
+                _async_retry_download(chat_id, msg_id, from_user_id, source_link=source_link),
                 _app.loop,
             )
             return jsonify({"code": "1", "message": "已加入重试队列"})
@@ -437,6 +438,7 @@ def web_batch_retry():
 
         chat_id = target.get("chat_id")
         msg_id = target.get("msg_id")
+        source_link = target.get("source_link", "") or ""
         if not chat_id or not msg_id:
             errors.append(f"{task_id}: incomplete data")
             continue
@@ -463,7 +465,7 @@ def web_batch_retry():
         try:
             if _app and _app.loop:
                 asyncio.run_coroutine_threadsafe(
-                    _async_retry_download(chat_id, msg_id, from_user_id, placeholder_task_id=f"retry_{task_id}"),
+                    _async_retry_download(chat_id, msg_id, from_user_id, placeholder_task_id=f"retry_{task_id}", source_link=source_link),
                     _app.loop,
                 )
                 queued += 1
@@ -559,8 +561,14 @@ def web_remove_pending():
     return jsonify({"code": "1", "message": "removed"})
 
 
-async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_task_id=""):
-    """Async helper: fetch the message and re-add to download queue"""
+async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_task_id="", source_link=""):
+    """Async helper: fetch the message and re-add to download queue
+
+    Args:
+        source_link: If provided, use parse_link → get_messages to get a fresh
+                     message copy. This is more reliable than direct get_messages
+                     because it resolves the link the same way download_from_link does.
+    """
     logger = logging.getLogger("web.retry")
 
     def _restore_failed(reason):
@@ -570,11 +578,11 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
             add_failed_download(
                 chat_id=chat_id,
                 msg_id=msg_id,
-                task_id=str(task_id) if task_id else "",
+                task_id=placeholder_task_id or "",
                 file_name="",
                 error_message=reason,
                 total_size=0,
-                source_link="",
+                source_link=source_link or "",
                 from_user_id=str(from_user_id) if from_user_id else "",
             )
         except Exception:
@@ -594,12 +602,31 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
             _restore_failed("重试失败: client不可用")
             return
 
-        try:
+        msg = None
+
+        # Strategy 1: If we have a source_link, use parse_link to get a fresh
+        # message. This mirrors the download_from_link path and is more reliable
+        # for forwarded messages with stale file references.
+        if source_link:
+            try:
+                from module.pyrogram_extension import parse_link
+                link_chat_id, link_msg_id, _ = await parse_link(client, source_link)
+                if link_chat_id and link_msg_id:
+                    msg = await client.get_messages(link_chat_id, link_msg_id)
+                    if msg:
+                        logger.info(
+                            f"Retry: source_link parse succeeded, "
+                            f"got msg {msg.id} from chat {link_chat_id}"
+                        )
+            except Exception as e:
+                logger.warning(
+                    f"Retry: source_link parse failed ({source_link}): {e}, "
+                    f"falling back to direct get_messages"
+                )
+
+        # Strategy 2: Fallback to direct get_messages
+        if not msg:
             msg = await client.get_messages(cid, int(msg_id))
-        except Exception as e:
-            logger.error(f"Retry failed: get_messages error for {cid}/{msg_id}: {e}")
-            _restore_failed(f"重试失败: 获取消息异常 ({e})")
-            return
 
         if not msg or msg.empty:
             logger.error(f"Retry failed: message {msg_id} not found in chat {cid}")

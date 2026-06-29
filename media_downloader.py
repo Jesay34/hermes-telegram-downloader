@@ -542,12 +542,31 @@ async def download_media(
                 error_message = f"连接错误（重试3次后失败）"
         except Exception as e:
             _cleanup_temp_file(temp_file_name)
+            error_str = str(e)
+            # "This message doesn't contain any downloadable media" happens when
+            # the file reference is stale. Refresh the message and retry instead
+            # of breaking immediately.
+            if "doesn't contain any downloadable media" in error_str:
+                logger.warning(
+                    f"Message[{message.id}] {ui_file_name}: stale file reference "
+                    f"(no downloadable media), refreshing message (retry {retry + 1}/3)"
+                )
+                error_message = "文件引用过期，正在刷新消息"
+                await asyncio.sleep(RETRY_TIME_OUT)
+                message = await fetch_message(client, message)
+                if _check_timeout(retry, message.id):
+                    logger.error(
+                        f"Message[{message.id}] {ui_file_name}: "
+                        f"still no downloadable media after 3 retries with message refresh"
+                    )
+                    error_message = "文件引用过期（刷新消息后重试3次仍失败）"
+                continue
             logger.error(
                 f"Message[{message.id}]: "
                 f"{_t('could not be downloaded due to following exception')}:\n[{e}].",
                 exc_info=True,
             )
-            error_message = f"下载异常: {str(e)[:100]}"
+            error_message = f"下载异常: {error_str[:100]}"
             break
     _cleanup_temp_file(temp_file_name)
     # Log the specific failure reason before returning
