@@ -171,6 +171,37 @@
 
         <!-- Active Downloads Tab -->
         <div x-show="activeTab === 'active'" x-transition:enter="fade-in">
+            <!-- FloodWait Banner -->
+            <div x-show="floodWait.active && floodWait.remaining > 0" x-transition class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm">
+                <div class="flex items-center gap-3">
+                    <!-- Pulsing clock icon -->
+                    <div class="relative shrink-0">
+                        <svg class="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span class="absolute -top-1 -right-1 flex h-3 w-3">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                        </span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-sm font-semibold text-amber-800">TG 限速等待中</span>
+                            <span class="text-2xl font-bold text-amber-900 font-mono tabular-nums" x-text="floodWaitFormat(floodWait.remaining)"></span>
+                        </div>
+                        <p class="text-xs text-amber-600 mt-0.5 truncate" x-text="floodWait.reason || 'Telegram API 频率限制，正在等待恢复'"></p>
+                    </div>
+                    <!-- Countdown progress bar -->
+                    <div class="hidden sm:block shrink-0 w-32">
+                        <div class="h-2 bg-amber-200 rounded-full overflow-hidden">
+                            <div class="h-full bg-amber-500 rounded-full transition-all duration-1000 ease-linear"
+                                 :style="'width: ' + Math.max(5, Math.min(100, (floodWait.remaining / Math.max(floodWait.remaining, 1)) * 100)) + '%'"></div>
+                        </div>
+                        <p class="text-xs text-amber-500 mt-1 text-center">自动恢复</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Select All Bar -->
             <div x-show="activeTasks.length > 0" class="mb-3 flex items-center justify-between">
                 <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-500 hover:text-gray-700">
@@ -810,6 +841,7 @@
             version: '',
             downloadSpeed: '0.00 B/s',
             isDownloading: true,
+            floodWait: { active: false, remaining: 0, reason: '' },
             activeTasks: [],
             completedTasks: [],
             completedTotal: 0,
@@ -857,8 +889,15 @@
                 await this.fetchCompleted(true);
                 this.pollTimer = setInterval(() => {
                     this.fetchDownloadStatus();
+                    this.fetchFloodWait();
                     this.fetchActive();
                 }, 1500);
+                // FloodWait countdown ticker (updates every second for smooth countdown)
+                this.floodWaitTimer = setInterval(() => {
+                    if (this.floodWait.active && this.floodWait.remaining > 0) {
+                        this.floodWait.remaining = Math.max(0, this.floodWait.remaining - 1);
+                    }
+                }, 1000);
                 // Pending list refreshes every 5 seconds
                 this.pendingPollTimer = setInterval(() => {
                     this.fetchPending();
@@ -956,6 +995,25 @@
                     const res = await fetch('/get_download_status');
                     const data = await res.json();
                     this.downloadSpeed = data.download_speed;
+                } catch(e) {}
+            },
+
+            async fetchFloodWait() {
+                try {
+                    const res = await fetch('/get_flood_wait');
+                    const data = await res.json();
+                    // Only update remaining from server if it's higher (server is authoritative)
+                    // or if state changed from inactive to active
+                    if (data.active) {
+                        if (!this.floodWait.active || data.remaining > this.floodWait.remaining) {
+                            this.floodWait.remaining = data.remaining;
+                        }
+                    }
+                    this.floodWait.active = data.active;
+                    this.floodWait.reason = data.reason || '';
+                    if (!data.active) {
+                        this.floodWait.remaining = 0;
+                    }
                 } catch(e) {}
             },
 
@@ -1300,6 +1358,12 @@
                 setTimeout(() => {
                     this.toast.show = false;
                 }, 2500);
+            },
+
+            floodWaitFormat(seconds) {
+                const m = Math.floor(seconds / 60);
+                const s = seconds % 60;
+                return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
             }
         }
     }

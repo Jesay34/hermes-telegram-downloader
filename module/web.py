@@ -115,6 +115,17 @@ def get_download_speed():
     )
 
 
+@_flask_app.route("/get_flood_wait")
+def get_flood_wait():
+    """Get unified FloodWait cooldown status for WebUI display."""
+    from module.pyrogram_extension import is_flood_wait_active, get_flood_wait_remaining, _unified_flood_wait
+    return jsonify(
+        active=is_flood_wait_active(),
+        remaining=int(get_flood_wait_remaining()),
+        reason=_unified_flood_wait.get("reason", "")
+    )
+
+
 @_flask_app.route("/get_download_state")
 def web_get_download_state():
     """Get current download state"""
