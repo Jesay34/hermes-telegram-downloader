@@ -209,21 +209,6 @@ def get_extension(file_id: str, mime_type: str, dot: bool = True) -> str:
     return extension
 
 
-async def send_message_by_language(
-    client: pyrogram.client.Client,
-    language: Language,
-    chat_id: Union[int, str],
-    reply_to_message_id: int,
-    language_str: List[str],
-):
-    """Record download status"""
-    msg = language_str[language.value - 1]
-
-    return await client.send_message(
-        chat_id, msg, reply_to_message_id=reply_to_message_id
-    )
-
-
 async def download_thumbnail(
     client: pyrogram.Client,
     temp_path: str,
@@ -1201,8 +1186,14 @@ async def _report_bot_status(
                     f_task_id = str(f.get("task_id", ""))
                     if f_task_id == str(node.task_id) or f_task_id == str(node.task_id_display):
                         fname = os.path.basename(f.get("file_name", ""))
+                        if not fname:
+                            fname = f"(msg_id: {f.get('msg_id', '?')})"
                         err = f.get("error_message", "未知错误")
-                        failed_files_str += f"  • {fname} — {err}\n"
+                        src_link = f.get("source_link", "")
+                        if src_link:
+                            failed_files_str += f"  • {fname}\n    原因: {err}\n    链接: {src_link}\n"
+                        else:
+                            failed_files_str += f"  • {fname}\n    原因: {err}\n"
             except Exception as e:
                 logger.warning(f"Failed to read failed download data for status report: {e}")
             if failed_files_str:

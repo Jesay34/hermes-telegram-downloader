@@ -2057,7 +2057,8 @@ async def _consume_one_pending():
         # Send notification BEFORE add_download_task to avoid race condition:
         # if we queue first, worker may finish a small file before send_message
         # returns, causing reply_message_id=0 and missing final status notification
-        if from_user_id and _bot and _bot.bot:
+        # Skip if reply_message_id already set (e.g. recovery task already sent B6)
+        if from_user_id and _bot and _bot.bot and not node.reply_message_id:
             try:
                 chat_name = getattr(msg.chat, "title", str(cid))
                 notify_text = (
