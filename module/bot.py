@@ -36,6 +36,7 @@ from module.language import Language, _t
 from module.pyrogram_extension import (
     check_user_permission,
     get_utf16_length,
+    is_flood_wait_active,
     parse_link,
     proc_cache_forward,
     report_bot_forward_status,
@@ -1898,8 +1899,8 @@ async def start_message_monitor():
 
         await asyncio.sleep(60)  # 每60秒检查一次
 
-# Global flood wait cooldown state (mutable dict to avoid global keyword)
-_flood_wait = {"until": 0.0, "reason": ""}
+# Global flood wait cooldown is now unified in pyrogram_extension._unified_flood_wait
+# All handlers (edit_message, download_media, get_messages) share it via is_flood_wait_active()
 
 async def _consume_one_pending():
     """Consume exactly one pending task from bot_tasks.json.
@@ -1932,11 +1933,11 @@ async def _consume_one_pending():
         if not client:
             return
 
-        # Check global flood wait cooldown
-        now = time.time()
-        if now < _flood_wait["until"]:
-            remaining = int(_flood_wait["until"] - now)
-            logger.debug(f"Pending consumer: FLOOD_WAIT cooldown, {remaining}s remaining ({_flood_wait['reason']})")
+        # Check unified flood wait cooldown (shared with edit_message, download_media)
+        if is_flood_wait_active():
+            from module.pyrogram_extension import get_flood_wait_remaining
+            remaining = int(get_flood_wait_remaining())
+            logger.debug(f"Pending consumer: unified FLOOD_WAIT cooldown, {remaining}s remaining")
             return
 
         try:
@@ -1965,10 +1966,11 @@ async def _consume_one_pending():
             remove_task(task_id)
             return
         except pyrogram.errors.exceptions.flood_420.FloodWait as e:
-            # Don't move to failed list — keep pending, set cooldown
+            # Don't move to failed list — keep pending, set unified cooldown
             wait_val = getattr(e, "value", 60)
-            _flood_wait["until"] = time.time() + wait_val + 5
-            _flood_wait["reason"] = f"FloodWait {wait_val}s on get_messages chat {cid} msg {msg_id}"
+            from module.pyrogram_extension import _unified_flood_wait
+            _unified_flood_wait["until"] = time.time() + wait_val + 5
+            _unified_flood_wait["reason"] = f"FloodWait {wait_val}s on get_messages chat {cid} msg {msg_id}"
             logger.warning(
                 f"Pending consumer: FLOOD_WAIT {wait_val}s on get_messages "
                 f"(chat {cid} msg {msg_id}), pausing consumer. Task stays pending."

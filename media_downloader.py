@@ -505,10 +505,37 @@ async def download_media(
                 )
                 error_message = f"频率限制总超时，累计等待{total_wait}秒"
                 break
+            # Set unified cooldown so edit_message and pending consumer pause too
+            from module.pyrogram_extension import _unified_flood_wait
+            _unified_flood_wait["until"] = time.time() + wait_err.value + 5
+            _unified_flood_wait["reason"] = f"download_media FloodWait {wait_err.value}s (msg {message.id})"
+            # First FloodWait for this file: notify user so they know progress is paused
+            if total_wait == wait_err.value and node and node.bot and getattr(node, "from_user_id", ""):
+                try:
+                    notify_text = (
+                        "⏳ 下载遇到 TG 限速\n"
+                        f"任务: {getattr(node, 'task_id_display', str(node.task_id))}\n"
+                        f"文件: {ui_file_name}\n"
+                        f"需等待 {wait_err.value} 秒后自动重试"
+                    )
+                    await node.bot.send_message(int(node.from_user_id), notify_text)
+                except Exception:
+                    pass
             await asyncio.sleep(wait_err.value)
             logger.info("Message[{}]: FlowWait {}s, waiting (total={}s)", message.id, wait_err.value, total_wait)
             error_message = f"频率限制，等待{wait_err.value}秒"
             _check_timeout(retry, message.id)
+            # Notify user that download has resumed after FloodWait
+            if node and node.bot and getattr(node, "from_user_id", ""):
+                try:
+                    resume_text = (
+                        "✅ 限速恢复，继续下载\n"
+                        f"任务: {getattr(node, 'task_id_display', str(node.task_id))}\n"
+                        f"文件: {ui_file_name}"
+                    )
+                    await node.bot.send_message(int(node.from_user_id), resume_text)
+                except Exception:
+                    pass
         except TypeError:
             _cleanup_temp_file(temp_file_name)
             logger.warning(

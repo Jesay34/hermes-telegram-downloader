@@ -341,6 +341,8 @@ async def upload_telegram_chat_message(
             )
             break
         except pyrogram.errors.exceptions.flood_420.FloodWait as wait_err:
+            _unified_flood_wait["until"] = time.time() + wait_err.value + 5
+            _unified_flood_wait["reason"] = f"upload FloodWait {wait_err.value}s (msg {message.id})"
             await asyncio.sleep(wait_err.value * 2)
             logger.warning(
                 "Upload Message[{}]: FlowWait {}", message.id, wait_err.value
@@ -1044,6 +1046,21 @@ async def report_bot_forward_status(
 
 _report_lock = asyncio.Lock()
 
+# Unified FloodWait cooldown shared across edit_message, download_media,
+# upload, and pending consumer. Any handler that catches FloodWait updates
+# this so all other components know to pause.
+_unified_flood_wait = {"until": 0.0, "reason": ""}
+
+
+def is_flood_wait_active() -> bool:
+    """Check if global FloodWait cooldown is active."""
+    return time.time() < _unified_flood_wait["until"]
+
+
+def get_flood_wait_remaining() -> float:
+    """Get remaining seconds of FloodWait cooldown (0 if expired)."""
+    return max(0.0, _unified_flood_wait["until"] - time.time())
+
 
 async def report_bot_status(
     client: pyrogram.Client,
@@ -1054,16 +1071,6 @@ async def report_bot_status(
     try:
         async with _report_lock:
             return await _report_bot_status(client, node, immediate_reply)
-    except pyrogram.errors.exceptions.flood_420.FloodWait as e:
-        wait_seconds = e.value
-        wait_minutes = wait_seconds / 60
-        logger.warning(
-            "FLOOD_WAIT: Telegram rate limit hit, need to wait {:.1f} minutes ({} seconds) before next EditMessage",
-            wait_minutes,
-            wait_seconds,
-        )
-        # Non-blocking: just set cooldown, don't sleep
-        node.flood_wait_until = time.time() + wait_seconds
     except Exception as e:
         logger.debug(f"{e}")
 
@@ -1290,6 +1297,8 @@ async def _report_bot_status(
                 wait_hours = wait_seconds / 3600
                 wait_minutes = (wait_seconds % 3600) / 60
                 node.flood_wait_until = time.time() + wait_seconds
+                _unified_flood_wait["until"] = time.time() + wait_seconds
+                _unified_flood_wait["reason"] = f"edit_message FloodWait {wait_seconds}s"
                 logger.warning(
                     "FLOOD_WAIT in edit_message: need to wait {:.0f}h {:.0f}m ({} seconds)",
                     wait_hours, wait_minutes, wait_seconds,
