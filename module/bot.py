@@ -200,6 +200,14 @@ class DownloadBot:
         self.task_id: int = 0
         self.reply_task = None
 
+        # In-memory set of task_ids that are in asyncio Queue but not yet picked
+        # up by a worker. Replaces the "queued" download_state — no longer written
+        # to bot_tasks.json. Cleared on restart (workers re-fetch via get_messages).
+        self._in_queue: set = set()
+        # Cache of message objects from direct_download so consumer can skip
+        # get_messages. {task_id: pyrogram.Message}. Cleared on restart.
+        self._cached_messages: dict = {}
+
     def gen_task_id(self) -> int:
         """Gen task id"""
         self.task_id += 1
@@ -1417,13 +1425,13 @@ async def direct_download(
         extra_data=extra_data,
     )
 
-    await _bot.add_download_task(
-        download_message,
-        node,
-    )
-
+    # Cache the message so consumer can skip get_messages.
+    # Do NOT queue directly — consumer controls when to feed workers.
+    _bot._cached_messages[node.task_id] = download_message
     node.is_running = True
-    update_download_state(node.task_id, "queued")
+
+    # Trigger consumer to check if a worker slot is available
+    _bot.app.loop.create_task(_consume_one_pending())
 
 
 async def download_forward_media(
@@ -1968,15 +1976,18 @@ async def _consume_one_pending():
         pending = get_pending_tasks()
         if not pending:
             return
-        # No concurrency guard here — the worker pool (max_download_task workers)
-        # already limits parallel downloads. Adding a guard here causes deadlock:
-        # if 3 workers are stuck on a slow/blocked chat, the consumer stops
-        # feeding the remaining 2 workers, and no tasks ever complete to
-        # unblock the guard.
-        # Find the first task that's truly pending (not already queued by direct_download)
+        # Concurrency guard: don't feed more tasks than workers can handle.
+        # downloading (in worker) + in_queue (waiting for worker) >= max → stop.
+        downloading = get_downloading_tasks()
+        in_queue_count = len(getattr(_bot, '_in_queue', set()))
+        max_tasks = getattr(_bot.app, 'max_download_task', 5)
+        if len(downloading) + in_queue_count >= max_tasks:
+            return
+
+        # Find first truly pending task (not already in asyncio Queue)
         task_data = None
         for t in pending:
-            if t.get("download_state") == "pending":
+            if t.get("download_state") == "pending" and t.get("task_id") not in _bot._in_queue:
                 task_data = t
                 break
         if not task_data:
@@ -2014,69 +2025,75 @@ async def _consume_one_pending():
             cid = int(chat_id)
         except (ValueError, TypeError):
             cid = chat_id
-        try:
-            msg = await asyncio.wait_for(client.get_messages(cid, int(msg_id)), timeout=300)
-        except asyncio.TimeoutError:
-            logger.warning(f"Pending consumer: get_messages TIMEOUT (300s) for chat {cid} msg {msg_id}, moving to failed")
+
+        # Use cached message from direct_download if available (skip get_messages)
+        cached_msg = _bot._cached_messages.pop(task_id, None)
+        if cached_msg:
+            msg = cached_msg
+        else:
             try:
-                from module.download_stat import add_failed_download
-                task_id_display = extra.get("task_id_display", str(task_id))
-                add_failed_download(
-                    chat_id=cid,
-                    msg_id=msg_id,
-                    task_id=task_id_display,
-                    file_name="",
-                    error_message="获取消息超时（300秒），可能TG服务器限速或网络问题",
-                    total_size=0,
-                    source_link="",
-                    from_user_id=str(from_user_id) if from_user_id else "",
-                )
-            except Exception:
-                pass
-            remove_task(task_id)
-            return
-        except pyrogram.errors.exceptions.flood_420.FloodWait as e:
-            # Don't move to failed list — keep pending, set unified cooldown
-            wait_val = getattr(e, "value", 60)
-            from module.pyrogram_extension import _unified_flood_wait
-            _unified_flood_wait["until"] = time.time() + wait_val + 5
-            _unified_flood_wait["reason"] = f"FloodWait {wait_val}s on get_messages chat {cid} msg {msg_id}"
-            logger.warning(
-                f"Pending consumer: FLOOD_WAIT {wait_val}s on get_messages "
-                f"(chat {cid} msg {msg_id}), pausing consumer. Task stays pending."
-            )
-            # Notify user about rate limit pause
-            if from_user_id and _bot and _bot.bot:
+                msg = await asyncio.wait_for(client.get_messages(cid, int(msg_id)), timeout=300)
+            except asyncio.TimeoutError:
+                logger.warning(f"Pending consumer: get_messages TIMEOUT (300s) for chat {cid} msg {msg_id}, moving to failed")
                 try:
-                    notify_text = (
-                        f"⏸️ TG 限速暂停\n"
-                        f"需要等待 {wait_val} 秒\n"
-                        f"任务: {extra.get('task_id_display', str(task_id))} 保持待执行\n"
-                        f"原因: FloodWait (get_messages)"
+                    from module.download_stat import add_failed_download
+                    task_id_display = extra.get("task_id_display", str(task_id))
+                    add_failed_download(
+                        chat_id=cid,
+                        msg_id=msg_id,
+                        task_id=task_id_display,
+                        file_name="",
+                        error_message="获取消息超时（300秒），可能TG服务器限速或网络问题",
+                        total_size=0,
+                        source_link="",
+                        from_user_id=str(from_user_id) if from_user_id else "",
                     )
-                    await _bot.bot.send_message(int(from_user_id), notify_text)
                 except Exception:
                     pass
-            return
-        except Exception as e:
-            logger.warning(f"Pending consumer: get_messages failed for chat {cid} msg {msg_id}: {e}, moving to failed")
-            try:
-                from module.download_stat import add_failed_download
-                task_id_display = extra.get("task_id_display", str(task_id))
-                add_failed_download(
-                    chat_id=cid,
-                    msg_id=msg_id,
-                    task_id=task_id_display,
-                    file_name="",
-                    error_message=f"获取消息失败: {e}",
-                    total_size=0,
-                    source_link="",
-                    from_user_id=str(from_user_id) if from_user_id else "",
+                remove_task(task_id)
+                return
+            except pyrogram.errors.exceptions.flood_420.FloodWait as e:
+                # Don't move to failed list — keep pending, set unified cooldown
+                wait_val = getattr(e, "value", 60)
+                from module.pyrogram_extension import _unified_flood_wait
+                _unified_flood_wait["until"] = time.time() + wait_val + 5
+                _unified_flood_wait["reason"] = f"FloodWait {wait_val}s on get_messages chat {cid} msg {msg_id}"
+                logger.warning(
+                    f"Pending consumer: FLOOD_WAIT {wait_val}s on get_messages "
+                    f"(chat {cid} msg {msg_id}), pausing consumer. Task stays pending."
                 )
-            except Exception:
-                pass
-            remove_task(task_id)
-            return
+                # Notify user about rate limit pause
+                if from_user_id and _bot and _bot.bot:
+                    try:
+                        notify_text = (
+                            f"⏸️ TG 限速暂停\n"
+                            f"需要等待 {wait_val} 秒\n"
+                            f"任务: {extra.get('task_id_display', str(task_id))} 保持待执行\n"
+                            f"原因: FloodWait (get_messages)"
+                        )
+                        await _bot.bot.send_message(int(from_user_id), notify_text)
+                    except Exception:
+                        pass
+                return
+            except Exception as e:
+                logger.warning(f"Pending consumer: get_messages failed for chat {cid} msg {msg_id}: {e}, moving to failed")
+                try:
+                    from module.download_stat import add_failed_download
+                    task_id_display = extra.get("task_id_display", str(task_id))
+                    add_failed_download(
+                        chat_id=cid,
+                        msg_id=msg_id,
+                        task_id=task_id_display,
+                        file_name="",
+                        error_message=f"获取消息失败: {e}",
+                        total_size=0,
+                        source_link="",
+                        from_user_id=str(from_user_id) if from_user_id else "",
+                    )
+                except Exception:
+                    pass
+                remove_task(task_id)
+                return
         if not msg or msg.empty:
             logger.warning(f"Pending consumer: msg {msg_id} not found in chat {cid}, removing")
             remove_task(task_id)
@@ -2100,7 +2117,8 @@ async def _consume_one_pending():
             node.source_message_id = extra.get("source_message_id", 0)
             node.source_chat_title = extra.get("source_chat_title", "")
             _bot.add_task_node(node)
-        update_download_state(task_id, "queued")
+        # Mark as in-queue (in-memory, not persisted). Worker will remove on pickup.
+        _bot._in_queue.add(task_id)
         node.is_running = True
 
         # Create placeholder in _download_result so WebUI shows the task immediately.

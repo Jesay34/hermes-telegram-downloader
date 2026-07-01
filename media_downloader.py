@@ -644,8 +644,10 @@ async def worker(client: pyrogram.client.Client):
             message = item[0]
             node: TaskNode = item[1]
             logger.info(f"Worker picked up message {message.id} from chat {node.chat_id} for task {node.task_id_display}")
-            # Mark task as actively downloading (no longer pending)
+            # Mark task as actively downloading (no longer pending/in-queue)
             if node.task_id:
+                from module.bot import _bot
+                _bot._in_queue.discard(node.task_id)
                 update_download_state(node.task_id, "downloading")
             if node.is_stop_transmission:
                 continue

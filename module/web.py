@@ -183,10 +183,11 @@ def get_download_list():
             if already_down and not is_already_down:
                 continue
             if not already_down:
-                # Show placeholder entries (down_byte==0, total_size==0) as "waiting"
-                # instead of filtering them out — pending consumer creates these
-                # so WebUI can display tasks that are queued but haven't started downloading yet
-                pass  # no filter — show everything that's not completed
+                # Hide placeholder entries (total_size==0, down_byte==0) — these
+                # are created by consumer for pending tasks but aren't actively
+                # downloading yet. Only show tasks with real progress data.
+                if value.get("total_size", 0) == 0 and value.get("down_byte", 0) == 0:
+                    continue
 
             progress = round(value["down_byte"] / value["total_size"] * 100, 1) if value["total_size"] > 0 else 0
 
@@ -628,9 +629,8 @@ def web_get_pending_list():
 
         task_id_display = task.get("extra_data", {}).get("task_id_display", str(task_id))
 
-        # Distinguish pending vs queued (in asyncio queue waiting for worker)
-        download_state = task.get("download_state", "pending")
-        queue_label = "排队中" if download_state == "queued" else "等待中"
+        # All pending tasks show as "等待中" — no more "排队中" state
+        queue_label = "等待中"
 
         result.append({
             "task_id": str(task_id),
@@ -644,7 +644,6 @@ def web_get_pending_list():
             "created_at": created_at_str,
             "created_ts": created_at,
             "wait_time": wait_time,
-            "download_state": download_state,
             "queue_label": queue_label,
         })
 
@@ -777,11 +776,9 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
             extra_data={"task_id_display": node.task_id_display, "message_id": msg_id},
         )
 
-        # Actually queue the download — without this the task stays pending forever
-        from media_downloader import add_download_task
-        await _bot.add_download_task(msg, node)
+        # Cache message and trigger consumer — same flow as direct_download
+        _bot._cached_messages[node.task_id] = msg
         node.is_running = True
-
 
         # Send retry notification to user via bot
         if from_user_id and _bot and _bot.bot:
@@ -796,6 +793,11 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
                 logger.warning(f"Retry notification failed for user {from_user_id}: {e}")
 
         logger.info(f"Retry: queued message {msg_id} from chat {cid} as task {node.task_id_display}")
+
+        # Trigger consumer to check if a worker slot is available
+        from module.bot import _consume_one_pending
+        import asyncio as _asyncio
+        _bot.app.loop.create_task(_consume_one_pending())
     except Exception as e:
         logger.error(f"Retry failed for chat={chat_id} msg={msg_id}: {e}", exc_info=True)
         _restore_failed(f"重试失败: {e}")
