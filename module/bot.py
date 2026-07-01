@@ -609,12 +609,12 @@ class DownloadBot:
                     "Listen forward, use the method to directly enter /listen_forward to view"
                 ),
             ),
-            types.BotCommand(
-                "add_filter",
-                _t(
-                    "Add download filter, use the method to directly enter /add_filter to view"
-                ),
-            ),
+            types.BotCommand("add_filter", _t("Add download filter, use the method to directly enter /add_filter to view")),
+            types.BotCommand("add_ad", "Add advertisement filter (keyword to skip on forward)"),
+            types.BotCommand("remove_ad", "Remove advertisement filter"),
+            types.BotCommand("add_replace_ad", "Add replace advertisement (message_link keyword)"),
+            types.BotCommand("remove_replace_ad", "Remove replace advertisement (message_link keyword)"),
+            types.BotCommand("set_ad", "Set group advertisement (message_link advertisement)"),
             types.BotCommand("set_language", _t("Set language")),
             types.BotCommand("stop", _t("Stop bot download or forward")),
         ]
@@ -715,6 +715,42 @@ class DownloadBot:
             MessageHandler(
                 add_filter,
                 filters=pyrogram.filters.command(["add_filter"])
+                & pyrogram.filters.user(self.allowed_user_ids),
+            )
+        )
+
+        self.bot.add_handler(
+            MessageHandler(
+                add_filter_advertisement_filter,
+                filters=pyrogram.filters.command(["add_ad"])
+                & pyrogram.filters.user(self.allowed_user_ids),
+            )
+        )
+        self.bot.add_handler(
+            MessageHandler(
+                remove_filter_advertisement_filter,
+                filters=pyrogram.filters.command(["remove_ad"])
+                & pyrogram.filters.user(self.allowed_user_ids),
+            )
+        )
+        self.bot.add_handler(
+            MessageHandler(
+                add_replace_advertisement_filter,
+                filters=pyrogram.filters.command(["add_replace_ad"])
+                & pyrogram.filters.user(self.allowed_user_ids),
+            )
+        )
+        self.bot.add_handler(
+            MessageHandler(
+                remove_replace_advertisement_filter,
+                filters=pyrogram.filters.command(["remove_replace_ad"])
+                & pyrogram.filters.user(self.allowed_user_ids),
+            )
+        )
+        self.bot.add_handler(
+            MessageHandler(
+                set_add_advertisement,
+                filters=pyrogram.filters.command(["set_ad"])
                 & pyrogram.filters.user(self.allowed_user_ids),
             )
         )
@@ -1027,8 +1063,12 @@ async def add_filter_advertisement_filter(
 
     filter_str = args[1]
 
+    if filter_str in _bot.app.filter_advertisement_list:
+        await client.send_message(message.from_user.id, f"Filter already exists: {filter_str}")
+        return
+
     _bot.app.filter_advertisement_list.append(filter_str)
-    await client.send_message(message.from_user.id, f"{_t('Add filter')} : {args[1]}")
+    await client.send_message(message.from_user.id, f"Add filter: {filter_str}")
     _bot.app.update_config(True)
 
 
@@ -1081,11 +1121,23 @@ async def set_add_advertisement(
 
     try:
         chat_id, _, _ = await parse_link(_bot.client, mesage_link)
-        _bot.app.group_add_advertisement[chat_id] = advertisement_str
-        _bot.app.update_config(True)
-        await client.send_message(
-            message.from_user.id, f"{_t('Set advertisement')} : {advertisement_str}"
-        )
+        if advertisement_str:
+            _bot.app.group_add_advertisement[chat_id] = advertisement_str
+            _bot.app.update_config(True)
+            await client.send_message(
+                message.from_user.id, f"Set advertisement : {advertisement_str}"
+            )
+        else:
+            if chat_id in _bot.app.group_add_advertisement:
+                del _bot.app.group_add_advertisement[chat_id]
+                _bot.app.update_config(True)
+                await client.send_message(
+                    message.from_user.id, f"Removed advertisement for chat {chat_id}"
+                )
+            else:
+                await client.send_message(
+                    message.from_user.id, f"No advertisement set for chat {chat_id}"
+                )
     except Exception as e:
         await client.send_message(
             message.from_user.id, f"{_t('Parse link error')}: {e}"
