@@ -43,15 +43,16 @@
 - **Cross-channel forward** — normal and protected channels (has_protected_content)
 - **Protected channels** — auto-switch to download-then-upload mode
 - **Comments forward** — `/forward_to_comments` forwards media to a post's comment section
-- **Listen forward** — `/listen_forward` checks for new messages every 60s and auto-forwards
+- **Listen forward** — `/listen_forward` uses NewMessage event-driven, triggers download/forward immediately on new channel messages (not polling)
 - **Ad filtering** — keyword-based ad filter and replacement
 
 ### Task Management
 
-- **Task persistence** — all tasks written to `log/bot_tasks.json`, survive container restarts
-- **Crash recovery** — incomplete tasks re-queued as pending on restart, consumed one by one
+- **Task persistence** — all download/forward tasks written to `log/bot_tasks.json`, survive container restarts
+- **Crash recovery** — incomplete tasks re-enter pending queue on restart, consumed one by one
 - **Task ID** — `MMDD-N` format (e.g. `0628-1`), resets daily, persistent counter
-- **Pending queue** — tasks enter pending state first, fed to workers by a consumer loop
+- **Pending queue** — tasks enter pending state first, fed to workers by consumer loop; queued state distinguishes tasks waiting for worker pickup
+- **Download progress persistence** — auto-saves `last_read_message_id` every 50 messages, no progress loss on interruption
 - **Download history** — completed/failed records in `log/download_history.json`
 - **Manual stop** — stopped tasks' incomplete files recorded as failed (reason: manually stopped)
 
