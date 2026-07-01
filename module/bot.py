@@ -191,6 +191,7 @@ class DownloadBot:
         self.is_running = True
         self.allowed_user_ids: List[Union[int, str]] = []
         self.monitor_task = None
+        self._listen_handler_ref = None
 
         meta = MetaData(datetime(2022, 8, 5, 14, 35, 12), 0, "", 0, 0, 0, "", 0)
         self.filter.set_meta_data(meta)
@@ -536,6 +537,38 @@ class DownloadBot:
 
         with open(self.config_path, "w", encoding="utf-8") as yaml_file:
             self._yaml.dump(self.config, yaml_file)
+
+    def _register_listen_handler(self):
+        """在 user client 上注册 NewMessage handler，实时检测监听频道的新消息"""
+        if self._listen_handler_ref:
+            return  # 已注册
+
+        async def _on_new_message(client, message):
+            chat_id = message.chat.id
+            if chat_id not in self.listen_forward_chat:
+                return
+            node = self.listen_forward_chat[chat_id]
+            if not node.is_running:
+                return
+            if not message.media:
+                return
+            try:
+                if not node.has_protected_content:
+                    await forward_normal_content(client, node, message)
+                    from module.pyrogram_extension import report_bot_status
+                    await report_bot_status(client, node, immediate_reply=True)
+                else:
+                    await self.add_download_task(message, node)
+            except Exception as e:
+                logger.exception(f"Listen handler error for chat {chat_id}: {e}")
+
+        handler = MessageHandler(
+            _on_new_message,
+            filters=pyrogram.filters.media  # 只处理有媒体的消息
+        )
+        self.client.add_handler(handler)
+        self._listen_handler_ref = handler
+        logger.info("Listen handler registered on user client for real-time monitoring")
 
     async def start(
         self,
@@ -1306,7 +1339,7 @@ async def direct_download(
     )
 
     node.is_running = True
-    update_download_state(node.task_id, "downloading")
+    update_download_state(node.task_id, "queued")
 
 
 async def download_forward_media(
@@ -2030,7 +2063,7 @@ async def _consume_one_pending():
             node.source_message_id = extra.get("source_message_id", 0)
             node.source_chat_title = extra.get("source_chat_title", "")
             _bot.add_task_node(node)
-        update_download_state(task_id, "downloading")
+        update_download_state(task_id, "queued")
         node.is_running = True
 
         # Create placeholder in _download_result so WebUI shows the task immediately.
@@ -2147,8 +2180,8 @@ async def set_listen_forward_msg(
     node.is_running = True
     _bot.listen_forward_chat[node.chat_id] = node
 
-    if not hasattr(_bot, "monitor_task") or _bot.monitor_task is None:
-        _bot.monitor_task = _bot.app.loop.create_task(start_message_monitor())
+    # 用事件驱动替代轮询：注册 NewMessage handler 实时监听
+    _bot._register_listen_handler()
     if not hasattr(_bot, "pending_consumer_task") or _bot.pending_consumer_task is None:
         _bot.pending_consumer_task = _bot.app.loop.create_task(_consume_one_pending())
 

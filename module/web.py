@@ -628,6 +628,10 @@ def web_get_pending_list():
 
         task_id_display = task.get("extra_data", {}).get("task_id_display", str(task_id))
 
+        # Distinguish pending vs queued (in asyncio queue waiting for worker)
+        download_state = task.get("download_state", "pending")
+        queue_label = "排队中" if download_state == "queued" else "等待中"
+
         result.append({
             "task_id": str(task_id),
             "task_id_display": task_id_display,
@@ -640,6 +644,8 @@ def web_get_pending_list():
             "created_at": created_at_str,
             "created_ts": created_at,
             "wait_time": wait_time,
+            "download_state": download_state,
+            "queue_label": queue_label,
         })
 
     # Sort by created_at ascending (earliest first)

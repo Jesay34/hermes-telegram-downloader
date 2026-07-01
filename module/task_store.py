@@ -152,11 +152,11 @@ def get_running_tasks() -> list:
 
 
 def get_pending_tasks() -> list:
-    """Get all tasks with download_state='pending' (created but not started downloading)."""
+    """Get all tasks with download_state='pending' or 'queued' (created but not started downloading)."""
     with _lock:
         tasks = _load_all()
         return [t for t in tasks if t.get("status") == "running"
-                and t.get("download_state", "pending") == "pending"]
+                and t.get("download_state", "pending") in ("pending", "queued")]
 
 
 def get_downloading_tasks() -> list:

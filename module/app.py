@@ -885,10 +885,11 @@ class Application:
             if idx >= len(self.app_data["chat"]):
                 self.app_data["chat"].append({})
 
-            if value.finish_task:
-                self.config["chat"][idx]["last_read_message_id"] = (
-                    value.last_read_message_id + 1
-                )
+            # 无论是否有下载完成的任务，都保存 last_read_message_id
+            # 这样即使只扫描了文本消息或被 filter 跳过的内容，进度也不会丢失
+            self.config["chat"][idx]["last_read_message_id"] = (
+                value.last_read_message_id + 1
+            )
 
             self.app_data["chat"][idx]["chat_id"] = key
             self.app_data["chat"][idx]["ids_to_retry"] = value.ids_to_retry
