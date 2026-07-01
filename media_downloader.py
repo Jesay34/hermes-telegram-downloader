@@ -773,7 +773,7 @@ def main():
     client = HookClient(
         "media_downloader", api_id=app.api_id, api_hash=app.api_hash,
         proxy=app.proxy, workdir=app.session_file_path,
-        start_timeout=app.start_timeout, no_updates=True,
+        start_timeout=app.start_timeout, no_updates=False,
     )
     try:
         app.pre_run()
