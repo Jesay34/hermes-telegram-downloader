@@ -1973,10 +1973,18 @@ async def _consume_one_pending():
         # if 3 workers are stuck on a slow/blocked chat, the consumer stops
         # feeding the remaining 2 workers, and no tasks ever complete to
         # unblock the guard.
-        task_data = pending[0]
+        # Find the first task that's truly pending (not already queued by direct_download)
+        task_data = None
+        for t in pending:
+            if t.get("download_state") == "pending":
+                task_data = t
+                break
+        if not task_data:
+            return
         task_id = task_data.get("task_id")
         if not task_id:
             return
+        
         chat_id = task_data.get("chat_id")
         extra = task_data.get("extra_data", {}) or {}
         msg_id = extra.get("message_id") or extra.get("source_message_id")
