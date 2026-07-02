@@ -674,6 +674,9 @@ async def download_chat_task(client: pyrogram.Client, chat_download_config: Chat
         for message in skipped_messages:
             await add_download_task(message, node)
     async for message in messages_iter:
+        # 让出控制权，避免阻塞 handler
+        await asyncio.sleep(0)
+        
         # Cache chat title from message
         if message and message.chat:
             chat_title = getattr(message.chat, 'title', None) or getattr(message.chat, 'first_name', None)
@@ -691,7 +694,8 @@ async def download_chat_task(client: pyrogram.Client, chat_download_config: Chat
         if app.need_skip_message(chat_download_config, message.id):
             continue
         if app.exec_filter(chat_download_config, meta_data):
-            await add_download_task(message, node)
+            if message.media:  # Only add to download queue if message has media
+                await add_download_task(message, node)
         else:
             node.download_status[message.id] = DownloadStatus.SkipDownload
             if message.media_group_id:

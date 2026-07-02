@@ -1643,6 +1643,7 @@ class HookClient(pyrogram.Client):
         else:
             self.me = await self.get_me()
             await self.initialize()
+            await self.dispatcher.start()
 
             return self
 
