@@ -1151,8 +1151,11 @@
                     if (data.code === '1') {
                         this.showToast(data.message || '已加入重试队列', 'success');
                         this.selectedTasks = [];
-                        this.fetchActive(); this.fetchCompleted();
-                        this.fetchPending(); this.fetchFailed();
+                        // 刷新页面数据，静默失败不弹错误（重试已成功）
+                        this.fetchActive().catch(() => {});
+                        this.fetchCompleted().catch(() => {});
+                        this.fetchPending().catch(() => {});
+                        this.fetchFailed().catch(() => {});
                     } else {
                         this.showToast(data.message || '批量重试失败', 'error');
                     }
@@ -1343,8 +1346,11 @@
                     const data = await res.json();
                     if (data.code === '1') {
                         this.showToast('已加入重试队列', 'success');
-                        this.fetchActive(); this.fetchCompleted();
-                        this.fetchPending(); this.fetchFailed();
+                        // 刷新页面数据，静默失败不弹错误（重试已成功）
+                        this.fetchActive().catch(() => {});
+                        this.fetchCompleted().catch(() => {});
+                        this.fetchPending().catch(() => {});
+                        this.fetchFailed().catch(() => {});
                     } else {
                         this.showToast(data.message || '重试失败', 'error');
                     }
