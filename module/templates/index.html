@@ -1063,7 +1063,7 @@
                     const data = await res.json();
                     if (data.code === '1') {
                         this.showToast('已移除待下载任务', 'success');
-                        this.fetchPending();
+                        this.fetchPending().catch(() => {});
                     } else {
                         this.showToast(data.message || '移除失败', 'error');
                     }
@@ -1130,7 +1130,8 @@
                     if (data.code === '1') {
                         this.showToast('已删除 ' + data.deleted + ' 个任务', 'success');
                         this.selectedTasks = [];
-                        this.fetchActive(); this.fetchCompleted();
+                        this.fetchActive().catch(() => {});
+                        this.fetchCompleted().catch(() => {});
                     } else {
                         this.showToast(data.message || '删除失败', 'error');
                     }
@@ -1286,7 +1287,8 @@
                             }
                             this.showToast(msg, 'success');
                             this.selectedTasks = [];
-                            this.fetchActive(); this.fetchCompleted();
+                            this.fetchActive().catch(() => {});
+                            this.fetchCompleted().catch(() => {});
                         } else {
                             this.showToast(data.message || '删除失败', 'error');
                         }
@@ -1308,7 +1310,8 @@
                                 msg = '任务已删除（文件: ' + data.file_error + '）';
                             }
                             this.showToast(msg, 'success');
-                            this.fetchActive(); this.fetchCompleted();
+                            this.fetchActive().catch(() => {});
+                            this.fetchCompleted().catch(() => {});
                         } else {
                             this.showToast(data.message || '删除失败', 'error');
                         }
@@ -1331,7 +1334,8 @@
                     const data = await res.json();
                     if (data.code === '1') {
                         this.showToast('任务已删除', 'success');
-                        this.fetchActive(); this.fetchCompleted();
+                        this.fetchActive().catch(() => {});
+                        this.fetchCompleted().catch(() => {});
                     } else {
                         this.showToast(data.message || '删除失败', 'error');
                     }
