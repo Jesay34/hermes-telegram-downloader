@@ -43,6 +43,15 @@
 - **受保护频道** — 自动切换为下载再上传模式
 - **评论区转发** — `/forward_to_comments` 转发媒体到指定帖子评论区
 - **实时监听转发** — `/listen_forward` 基于 NewMessage 事件驱动，频道有新消息立即触发下载/转发（非轮询）
+- **config.yaml 频道监控** — 配置文件中的 chat 列表也会自动监听新消息，启动后实时更新（需设置 `no_updates: false`）
+
+### 广告过滤
+
+- **关键词过滤** — `/add_ad` 添加广告关键词，转发时自动跳过包含这些关键词的消息
+- **关键词移除** — `/remove_ad` 移除广告关键词
+- **内容替换** — `/add_replace_ad` 添加替换规则，自动从 caption 中删除匹配的广告文字
+- **替换移除** — `/remove_replace_ad` 移除替换规则
+- **群组广告** — `/set_ad` 为特定群组设置追加广告文字，转发时自动添加到 caption 末尾
 
 ### 任务管理
 
@@ -313,6 +322,11 @@ proxy:
 | `/listen_forward <src> <dst> [filter]` | 实时监听并自动转发 | `/listen_forward https://t.me/c/A https://t.me/c/B` |
 | `/get_info <link>` | 获取群组/频道/消息信息 | `/get_info https://t.me/c/123/456` |
 | `/add_filter <filter>` | 设置下载过滤器 | `/add_filter message_date >= 2024-01-01` |
+| `/add_ad <keyword>` | 添加广告关键词（转发时跳过） | `/add_ad 推广` |
+| `/remove_ad <keyword>` | 移除广告关键词 | `/remove_ad 推广` |
+| `/add_replace_ad <msg_link> <keyword>` | 添加替换规则（从 caption 删除） | `/add_replace_ad https://t.me/c/123/456 广告` |
+| `/remove_replace_ad <msg_link> <keyword>` | 移除替换规则 | `/remove_replace_ad https://t.me/c/123/456 广告` |
+| `/set_ad <msg_link> <ad_text>` | 设置群组追加广告（空文本删除） | `/set_ad https://t.me/c/123 关注我` |
 | `/set_language <lang>` | 设置语言（en/ru/zh/ua） | `/set_language zh` |
 | `/stop` | 停止下载/转发/监听（交互式按钮） | `/stop` |
 | `/help` `/start` | 显示帮助 | — |

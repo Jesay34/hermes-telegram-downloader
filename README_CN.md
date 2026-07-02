@@ -44,6 +44,15 @@
 - **Protected channels** — auto-switch to download-then-upload mode
 - **Comments forward** — `/forward_to_comments` forwards media to a post's comment section
 - **Listen forward** — `/listen_forward` uses NewMessage event-driven, triggers download/forward immediately on new channel messages (not polling)
+- **Config.yaml monitoring** — chats in config file also auto-monitor new messages, real-time updates after startup (requires `no_updates: false`)
+
+### Ad Filtering
+
+- **Keyword filtering** — `/add_ad` adds ad keywords, auto-skips messages containing these keywords during forwarding
+- **Keyword removal** — `/remove_ad` removes ad keywords
+- **Content replacement** — `/add_replace_ad` adds replacement rules, auto-removes matching ad text from caption
+- **Replacement removal** — `/remove_replace_ad` removes replacement rules
+- **Group ads** — `/set_ad` sets appended ad text for specific groups, auto-added to caption during forwarding
 
 ### Task Management
 
@@ -313,6 +322,11 @@ proxy:
 | `/listen_forward <src> <dst> [filter]` | Listen and auto-forward | `/listen_forward https://t.me/c/A https://t.me/c/B` |
 | `/get_info <link>` | Get chat/message info | `/get_info https://t.me/c/123/456` |
 | `/add_filter <filter>` | Set download filter | `/add_filter message_date >= 2024-01-01` |
+| `/add_ad <keyword>` | Add ad keyword (skip during forward) | `/add_ad 推广` |
+| `/remove_ad <keyword>` | Remove ad keyword | `/remove_ad 推广` |
+| `/add_replace_ad <msg_link> <keyword>` | Add replacement rule (remove from caption) | `/add_replace_ad https://t.me/c/123/456 广告` |
+| `/remove_replace_ad <msg_link> <keyword>` | Remove replacement rule | `/remove_replace_ad https://t.me/c/123/456 广告` |
+| `/set_ad <msg_link> <ad_text>` | Set group append ad (empty to delete) | `/set_ad https://t.me/c/123 关注我` |
 | `/set_language <lang>` | Set language (en/ru/zh/ua) | `/set_language zh` |
 | `/stop` | Stop download/forward/listen (interactive) | `/stop` |
 | `/help` `/start` | Show help | — |
