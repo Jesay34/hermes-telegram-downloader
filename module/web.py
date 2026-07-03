@@ -32,7 +32,7 @@ import asyncio
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.ERROR)
 
-_flask_app = Flask(__name__)
+_flask_app = Flask(__name__, static_folder='static', static_url_path='/static')
 _flask_app.secret_key = "tdl"
 # Always reload templates from disk on each request — needed for NAS deployments
 # where index.html is updated by the deploy script without restarting the container.

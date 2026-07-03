@@ -27,6 +27,7 @@ services:
       - "./module/download_stat.py:/app/module/download_stat.py"
       - "./module/web.py:/app/module/web.py"
       - "./module/templates/index.html:/app/module/templates/index.html"
+      - "./module/static:/app/module/static"
       - "./module/bot.py:/app/module/bot.py"
       - "./module/pyrogram_extension.py:/app/module/pyrogram_extension.py"
       - "./module/task_store.py:/app/module/task_store.py"
