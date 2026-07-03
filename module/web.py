@@ -540,6 +540,7 @@ def web_batch_retry():
 
         chat_id = target.get("chat_id")
         msg_id = target.get("msg_id")
+        from_user_id = target.get("from_user_id", "")
         source_link = target.get("source_link", "") or ""
         if not chat_id or not msg_id:
             errors.append(f"{task_id}: incomplete data")
@@ -694,6 +695,13 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
                 source_link=source_link or "",
                 from_user_id=str(from_user_id) if from_user_id else "",
             )
+        except Exception:
+            pass
+        # 清理 placeholder 和 task node，避免残留在 bot_tasks.json
+        try:
+            if placeholder_task_id:
+                from module.task_store import remove_task
+                remove_task(placeholder_task_id)
         except Exception:
             pass
 
