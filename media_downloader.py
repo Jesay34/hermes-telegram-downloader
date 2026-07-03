@@ -549,12 +549,49 @@ async def download_media(
                     f"Message[{message.id}]: {_t('Timing out after 3 reties, download skipped.')}"
                 )
                 error_message = "下载超时（重试3次后失败）"
-        except OSError as e:
-            # Connection-level error (timeout, reset, proxy disconnect).
-            # Exponential backoff: 10s, 20s, 40s between retries to avoid
-            # reconnect storms when multiple tasks fail simultaneously.
+        except TimeoutError as e:
+            # TG 静默限速：连接超时，没有显式 FloodWait 错误码
+            # 注意：TimeoutError 是 OSError 子类，必须放在 except OSError 之前
             _cleanup_temp_file(temp_file_name)
-            backoff = 10 * (2 ** retry)
+            # 递增退避：第1次60s，第2次120s，第3次300s
+            backoff = [60, 120, 300][min(retry, 2)]
+            from module.pyrogram_extension import _unified_flood_wait
+            _unified_flood_wait["until"] = time.time() + backoff + 5
+            _unified_flood_wait["reason"] = f"连接超时疑似限速 (msg {message.id})"
+            # 第一次超时就通知用户
+            if retry == 0 and node and node.bot and getattr(node, "from_user_id", ""):
+                try:
+                    notify_text = (
+                        "⏸️ TG 连接超时，疑似限速\n"
+                        f"任务: {getattr(node, 'task_id_display', str(node.task_id))}\n"
+                        f"文件: {ui_file_name}\n"
+                        f"暂停 {backoff} 秒后自动重试\n"
+                        f"原因: Request timed out (非FloodWait)"
+                    )
+                    await node.bot.send_message(int(node.from_user_id), notify_text)
+                except Exception:
+                    pass
+            await asyncio.sleep(backoff)
+            # 刷新消息引用（可能已过期），用 try-except 防止二次超时
+            try:
+                message = await fetch_message(client, message)
+            except Exception as fetch_err:
+                logger.warning(f"Message[{message.id}]: fetch_message 也超时: {fetch_err}")
+            error_message = f"连接超时疑似限速（等待{backoff}秒后重试）"
+        except OSError as e:
+            # 连接级错误（网络断连、代理断开等）
+            # TimeoutError 已被上面的 handler 拦截，这里处理非超时类连接错误
+            # 但如果异常信息包含 timeout 关键字，也按限速处理（防御性）
+            _cleanup_temp_file(temp_file_name)
+            err_str = str(e).lower()
+            if "timed out" in err_str or "timeout" in err_str:
+                # 看起来像超时，用长退避 + 设 cooldown
+                backoff = [60, 120, 300][min(retry, 2)]
+                _unified_flood_wait["until"] = time.time() + backoff + 5
+                _unified_flood_wait["reason"] = f"连接超时疑似限速 (msg {message.id})"
+            else:
+                # 普通连接错误，保持原有指数退避：10s, 20s, 40s
+                backoff = 10 * (2 ** retry)
             logger.warning(
                 f"Message[{message.id}] {ui_file_name}: connection error ({type(e).__name__}), "
                 f"retry {retry + 1}/3 after {backoff}s backoff"

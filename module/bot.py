@@ -1940,23 +1940,27 @@ async def _consume_one_pending():
             try:
                 msg = await asyncio.wait_for(client.get_messages(cid, int(msg_id)), timeout=300)
             except asyncio.TimeoutError:
-                logger.warning(f"Pending consumer: get_messages TIMEOUT (300s) for chat {cid} msg {msg_id}, moving to failed")
-                try:
-                    from module.download_stat import add_failed_download
-                    task_id_display = extra.get("task_id_display", str(task_id))
-                    add_failed_download(
-                        chat_id=cid,
-                        msg_id=msg_id,
-                        task_id=task_id_display,
-                        file_name="",
-                        error_message="获取消息超时（300秒），可能TG服务器限速或网络问题",
-                        total_size=0,
-                        source_link="",
-                        from_user_id=str(from_user_id) if from_user_id else "",
-                    )
-                except Exception:
-                    pass
-                remove_task(task_id)
+                # TG 静默限速：get_messages 300s 超时
+                # 不标失败，保持 pending，设 cooldown 让所有组件暂停
+                backoff = 60
+                from module.pyrogram_extension import _unified_flood_wait
+                _unified_flood_wait["until"] = time.time() + backoff + 5
+                _unified_flood_wait["reason"] = f"get_messages 超时疑似限速 chat {cid} msg {msg_id}"
+                logger.warning(
+                    f"Pending consumer: get_messages TIMEOUT (300s) for chat {cid} msg {msg_id}, "
+                    f"setting {backoff}s cooldown. Task stays pending."
+                )
+                if from_user_id and _bot and _bot.bot:
+                    try:
+                        notify_text = (
+                            "⏸️ TG 连接超时，疑似限速\n"
+                            f"任务: {extra.get('task_id_display', str(task_id))} 保持待执行\n"
+                            f"暂停 {backoff} 秒后自动重试\n"
+                            f"原因: get_messages 300s 超时"
+                        )
+                        await _bot.bot.send_message(int(from_user_id), notify_text)
+                    except Exception:
+                        pass
                 return
             except pyrogram.errors.exceptions.flood_420.FloodWait as e:
                 # Don't move to failed list — keep pending, set unified cooldown
@@ -1982,6 +1986,17 @@ async def _consume_one_pending():
                         pass
                 return
             except Exception as e:
+                # 防御性检测：如果异常是 TimeoutError 类型，按限速处理
+                if isinstance(e, TimeoutError):
+                    backoff = 60
+                    from module.pyrogram_extension import _unified_flood_wait
+                    _unified_flood_wait["until"] = time.time() + backoff + 5
+                    _unified_flood_wait["reason"] = f"get_messages 连接超时疑似限速 chat {cid} msg {msg_id}"
+                    logger.warning(
+                        f"Pending consumer: TimeoutError for chat {cid} msg {msg_id}: {e}, "
+                        f"setting {backoff}s cooldown. Task stays pending."
+                    )
+                    return  # 保持 pending，不 remove_task
                 logger.warning(f"Pending consumer: get_messages failed for chat {cid} msg {msg_id}: {e}, moving to failed")
                 try:
                     from module.download_stat import add_failed_download
