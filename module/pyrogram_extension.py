@@ -1202,12 +1202,15 @@ async def _report_bot_status(
         actual_total = 0
         actual_success = 0
         actual_failed = 0
+        actual_skipped = 0
         if node.chat_id in download_result:
             for mid, val in download_result[node.chat_id].items():
                 if str(val.get("task_id", "")) == str(node.task_id):
                     actual_total += 1
                     if val["down_byte"] == val["total_size"] and val["total_size"] > 0:
                         actual_success += 1
+                    else:
+                        actual_skipped += 1
         if node.failed_download_task > 0:
             try:
                 for f in get_failed_downloads():
@@ -1223,7 +1226,7 @@ async def _report_bot_status(
             display_total = max(actual_total, actual_failed)
             display_success = actual_success
             display_failed = actual_failed
-            display_skipped = node.skip_download_task
+            display_skipped = actual_skipped
         else:
             display_total = node.total_download_task
             display_success = node.success_download_task
