@@ -1242,18 +1242,21 @@ async def _report_bot_status(
             # Batch tasks: show full stats including 总数
             is_single = (node.limit == 1 and not node.upload_telegram_chat_id)
             if is_single:
-                # For single tasks, show only the dominant result
+                # For single tasks, show only the final result
+                # Priority: failed > skipped > success
                 if display_failed > 0:
                     new_msg_str += (
                         f"📥 {_t('Downloading')}\n"
                         f"└─ ❌ {_t('Failed')}: {display_failed}\n"
                     )
                 elif display_skipped > 0:
+                    # 文件已存在，跳过下载
                     new_msg_str += (
                         f"📥 {_t('Downloading')}\n"
                         f"└─ ⏩ {_t('Skipped')}: {display_skipped}\n"
                     )
                 elif display_success > 0:
+                    # 新下载成功
                     new_msg_str += (
                         f"📥 {_t('Downloading')}\n"
                         f"└─ ✅ {_t('Success')}: {display_success}\n"
