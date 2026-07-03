@@ -2030,14 +2030,16 @@ async def _consume_one_pending():
         # Create placeholder in _download_result so WebUI shows the task immediately.
         # Pyrogram's update_download_status will overwrite total_size/file_name/down_byte
         # when the actual download starts.
+        # Set total_size=1 (not 0) so web.py doesn't filter it out as a "placeholder"
+        # entry. WebUI will show "获取文件信息中..." until real size arrives.
         from module.download_stat import _download_result
         if cid not in _download_result:
             _download_result[cid] = {}
         if int(msg_id) not in _download_result[cid]:
             _download_result[cid][int(msg_id)] = {
                 "down_byte": 0,
-                "total_size": 0,
-                "file_name": "",
+                "total_size": 1,  # Non-zero so web.py doesn't hide this entry
+                "file_name": "获取文件信息中...",
                 "start_time": time.time(),
                 "end_time": 0,
                 "download_speed": 0,
