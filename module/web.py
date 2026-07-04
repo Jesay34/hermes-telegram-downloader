@@ -226,6 +226,14 @@ def get_download_list():
             else:
                 status = "active"
 
+            # Phase: 区分 placeholder（消息数据获取中）和真正在下载
+            # total_size<=1 且 down_byte==0 = consumer 刚创建的占位条目
+            # Pyrogram 第一次回调就会覆盖为真实 total_size
+            if status == "active" and value.get("total_size", 0) <= 1 and value.get("down_byte", 0) == 0:
+                phase = "fetching"
+            else:
+                phase = "downloading"
+
             # Get chat title from cache
             source_title = value.get("source_chat_title", "")
             if not source_title and value.get("source_chat_id"):
@@ -265,6 +273,7 @@ def get_download_list():
                 "eta": eta,
                 "save_path": value["file_name"].replace("\\", "/"),
                 "status": status,
+                "phase": phase,
                 "start_time": start_time,
                 "end_time": end_time,
                 "created_at": created_at,
@@ -590,8 +599,26 @@ def web_get_pending_list():
     """Get list of pending tasks (received but not started downloading)"""
     import time as _time
     pending = get_pending_tasks()
+    # Filter out tasks already in _download_result (consumer created placeholder).
+    # These will show up in the active download list — no need to duplicate in pending.
+    from module.download_stat import get_download_result as _get_dr
+    _dr = _get_dr()
+
     result = []
     for task in pending:
+        # 如果该任务已在 _download_result（consumer 创建了 placeholder），
+        # 说明即将出现在 Active 列表，从 Pending 排除，避免撞车
+        _cid = task.get("chat_id")
+        _mid = task.get("extra_data", {}).get("message_id")
+        if _cid is not None and _mid is not None:
+            try:
+                _cid_int = int(_cid)
+                _mid_int = int(_mid)
+                if _cid_int in _dr and _mid_int in _dr[_cid_int]:
+                    continue
+            except (ValueError, TypeError):
+                pass  # 类型不对就不过滤，保守起见让任务继续显示在 pending
+
         task_id = task.get("task_id", "")
         created_at = task.get("created_at", 0)
         created_at_str = ""

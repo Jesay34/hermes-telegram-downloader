@@ -287,13 +287,14 @@
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                                           :class="{
                                               'bg-amber-100 text-amber-700': task.status === 'paused',
-                                              'bg-blue-100 text-blue-700': task.status === 'active',
+                                              'bg-blue-100 text-blue-700': task.status === 'active' && task.phase !== 'fetching',
+                                              'bg-indigo-100 text-indigo-600': task.phase === 'fetching',
                                               'bg-gray-100 text-gray-500': task.status === 'waiting'
                                           }"
                                           x-text="{
                                               'paused': '已暂停',
                                               'waiting': '等待中',
-                                              'active': '下载中'
+                                              'active': task.phase === 'fetching' ? '消息数据获取中' : '下载中'
                                           }[task.status] || task.status">
                                     </span>
                                     <span class="text-xs text-gray-400 font-medium" x-text="task.chat_title || task.chat"></span>
@@ -308,16 +309,20 @@
                                 </div>
                                 <h4 class="text-sm font-medium text-gray-900 sm:truncate line-clamp-2" :title="task.filename" x-text="task.filename"></h4>
                                 <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
-                                    <span x-text="task.total_size"></span>
-                                    <span class="text-gray-300">|</span>
-                                    <span class="font-mono font-medium"
-                                          :class="{
-                                              'text-amber-600': task.status === 'paused',
-                                              'text-blue-600': task.status === 'active',
-                                              'text-gray-400': task.status === 'waiting'
-                                          }"
-                                          x-text="task.download_speed"></span>
-                                    <template x-if="task.eta">
+                                    <template x-if="task.phase !== 'fetching'">
+                                        <template>
+                                            <span x-text="task.total_size"></span>
+                                            <span class="text-gray-300">|</span>
+                                            <span class="font-mono font-medium"
+                                                  :class="{
+                                                      'text-amber-600': task.status === 'paused',
+                                                      'text-blue-600': task.status === 'active',
+                                                      'text-gray-400': task.status === 'waiting'
+                                                  }"
+                                                  x-text="task.download_speed"></span>
+                                        </template>
+                                    </template>
+                                    <template x-if="task.eta && task.phase !== 'fetching'">
                                         <span>
                                             <span class="text-gray-300">|</span>
                                             <span class="text-gray-400" x-text="'剩余 ' + task.eta"></span>
@@ -328,7 +333,7 @@
 
                             <!-- Action Buttons -->
                             <div class="flex items-center gap-1.5 shrink-0">
-                                <template x-if="task.status === 'active'">
+                                <template x-if="task.status === 'active' && task.phase !== 'fetching'">
                                     <button
                                         @click="pauseTask(task.task_id)"
                                         class="btn-action p-2.5 sm:p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 border border-amber-200"
@@ -365,20 +370,33 @@
 
                         <!-- Progress Bar -->
                         <div class="mt-3 ml-7">
-                            <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
-                                <span>进度</span>
-                                <span class="font-mono font-medium" x-text="task.download_progress + '%'"></span>
-                            </div>
-                            <div class="w-full h-3 sm:h-2 bg-gray-100 rounded-full overflow-hidden">
-                                <div
-                                    class="h-full rounded-full progress-bar"
-                                    :class="{
-                                        'bg-blue-500': task.download_progress_raw < 100,
-                                        'bg-green-500': task.download_progress_raw >= 100
-                                    }"
-                                    :style="'width: ' + task.download_progress + '%'"
-                                ></div>
-                            </div>
+                            <template x-if="task.phase === 'fetching'">
+                                <div class="flex items-center gap-2 text-xs text-indigo-500">
+                                    <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                    </svg>
+                                    <span>正在获取文件信息...</span>
+                                </div>
+                            </template>
+                            <template x-if="task.phase !== 'fetching'">
+                                <div>
+                                    <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+                                        <span>进度</span>
+                                        <span class="font-mono font-medium" x-text="task.download_progress + '%'"></span>
+                                    </div>
+                                    <div class="w-full h-3 sm:h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div
+                                            class="h-full rounded-full progress-bar"
+                                            :class="{
+                                                'bg-blue-500': task.download_progress_raw < 100,
+                                                'bg-green-500': task.download_progress_raw >= 100
+                                            }"
+                                            :style="'width: ' + task.download_progress + '%'"
+                                        ></div>
+                                    </div>
+                                </div>
+                            </template>
                         </div>
                     </div>
                 </template>
