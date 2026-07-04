@@ -329,6 +329,10 @@ async def download_task(client: pyrogram.Client, message: pyrogram.types.Message
         # Remove from active download list so it doesn't stay in WebUI forever
         from module.download_stat import delete_download_result_entry as _ddre
         _ddre(node.chat_id, message.id)
+    elif download_status is DownloadStatus.SkipDownload:
+        # Remove placeholder from active download list
+        from module.download_stat import delete_download_result_entry as _ddre
+        _ddre(node.chat_id, message.id)
     await upload_telegram_chat(
         client, node.upload_user if node.upload_user else client,
         app, node, message, download_status, file_name,
