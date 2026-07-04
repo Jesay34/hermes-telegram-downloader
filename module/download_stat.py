@@ -302,6 +302,10 @@ async def update_download_status(
             ]
             end_time = _download_result[chat_id][message_id]["end_time"]
 
+            # 检测占位符 → 真实数据转换，标记需要立即刷新 bot 消息
+            _prev_total = _download_result[chat_id][message_id].get("total_size", 0)
+            _placeholder_resolved = _prev_total <= 1 and total_size > 1
+
             _total_download_size += down_byte - last_download_byte
             each_second_total_download += down_byte - last_download_byte
 
@@ -352,6 +356,13 @@ async def update_download_status(
                 "source_message_id": getattr(node, "source_message_id", 0),
             }
             _total_download_size += down_byte
+            _placeholder_resolved = False
+
+    # 占位符→真实数据转换时强制刷新 bot 消息（避免卡在"获取文件信息中..."）
+    if _placeholder_resolved and node.bot:
+        node.last_progress_pct = -1  # 重置进度桶，让 0~20% 也能触发更新
+        from module.pyrogram_extension import report_bot_status
+        await report_bot_status(node.bot, node, immediate_reply=True)
 
     # Send initial progress report when download first starts
     if node.bot and not node.initial_progress_reported and down_byte > 0:
