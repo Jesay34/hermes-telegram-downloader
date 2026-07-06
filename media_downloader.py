@@ -833,6 +833,65 @@ def main():
     _TCP.TIMEOUT = 900
     logger.info(f"Patched TCP.TIMEOUT: 10s -> {_TCP.TIMEOUT}s")
 
+    # ── Patch B: Swallow ChannelInvalid in Message._parse ──
+    # When a monitored channel has messages that reply to messages in another
+    # channel the user account can't access, Pyrogram's Message._parse tries
+    # to fetch reply_to_message via client.get_messages → resolve_peer →
+    # channels.GetChannels, which throws ChannelInvalid. This kills the entire
+    # message_parser call in the dispatcher, so the update is silently dropped
+    # and our NewMessage handler never fires — the download never starts.
+    # Fix: wrap Message._parse so that on ChannelInvalid, we retry with a
+    # client wrapper that returns None for inaccessible reply targets.
+    from pyrogram.types import Message as _PMsg
+    try:
+        from pyrogram.errors import ChannelInvalid as _ChannelInvalidErr
+    except ImportError:
+        # Fallback for forks where ChannelInvalid is under subpackage
+        from pyrogram.errors.exceptions.bad_request_400 import ChannelInvalid as _ChannelInvalidErr
+
+    _orig_msg_parse = _PMsg._parse
+
+    class _SafeReplyClient:
+        """Pass-through client that swallows ChannelInvalid in reply fetches."""
+        def __init__(self, client):
+            self._client = client
+
+        async def get_messages(self, *a, **kw):
+            try:
+                return await self._client.get_messages(*a, **kw)
+            except _ChannelInvalidErr:
+                return None
+
+        async def get_stories(self, *a, **kw):
+            try:
+                return await self._client.get_stories(*a, **kw)
+            except _ChannelInvalidErr:
+                return None
+
+        async def get_forum_topics_by_id(self, *a, **kw):
+            try:
+                return await self._client.get_forum_topics_by_id(*a, **kw)
+            except _ChannelInvalidErr:
+                return None
+
+        def __getattr__(self, name):
+            return getattr(self._client, name)
+
+    async def _safe_msg_parse(client, *args, **kwargs):
+        try:
+            return await _orig_msg_parse(client, *args, **kwargs)
+        except _ChannelInvalidErr:
+            logger.warning(
+                "ChannelInvalid in Message._parse — "
+                "retrying without reply_to_message"
+            )
+            return await _orig_msg_parse(
+                _SafeReplyClient(client), *args, **kwargs
+            )
+
+    _PMsg._parse = _safe_msg_parse
+    logger.info("Patched Message._parse: ChannelInvalid no longer drops updates")
+
     tasks = []
     client = HookClient(
         "media_downloader", api_id=app.api_id, api_hash=app.api_hash,
