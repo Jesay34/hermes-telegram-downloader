@@ -495,9 +495,9 @@ class DownloadBot:
                     )
                     node.task_id_display = f"config-{chat_id}-{message.id}"
                     
-                    # 更新 last_read_message_id
-                    chat_config.last_read_message_id = message.id
-                    self.app.update_config(immediate=True)
+                    # 不更新 last_read_message_id — 实时监控只负责下载，
+                    # 扫描位置由 download_chat_task 管理。这样下载失败时
+                    # 重启扫描能重新覆盖这些消息（_is_exist 检查防止重复下载）。
                     
                     # 加入下载队列
                     await self.add_download_task(message, node)

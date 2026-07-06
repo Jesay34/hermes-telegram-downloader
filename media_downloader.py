@@ -760,16 +760,18 @@ async def download_chat_task(client: pyrogram.Client, chat_download_config: Chat
                 await upload_telegram_chat(client, node.upload_user, app, node, message, DownloadStatus.SkipDownload)
         # Update task progress for crash recovery
         update_task_progress(node.task_id, message.id)
-        # 每条消息处理后更新 last_read_message_id，防止中断丢失进度
+        # 降低 last_read_message_id 更新频率：每 200 条消息持久化一次
+        # 这样崩溃时最多重复扫描 200 条，而不是每条都更新
         chat_download_config.last_read_message_id = max(
             chat_download_config.last_read_message_id, message.id
         )
-        # 每 50 条消息持久化一次配置
-        if message.id % 50 == 0:
+        if message.id % 200 == 0:
             app.update_config(immediate=True)
+    # 扫描结束后保存最终位置，确保重启时从正确位置继续
     chat_download_config.need_check = True
     chat_download_config.total_task = node.total_task
     node.is_running = True
+    app.update_config(immediate=True)
 
 
 async def download_all_chat(client: pyrogram.Client):
