@@ -984,7 +984,7 @@
                     this.fetchDownloadStatus();
                     this.fetchFloodWait();
                     this.fetchActive();
-                }, 1500);
+                }, 1000);
                 // FloodWait countdown ticker (updates every second for smooth countdown)
                 this.floodWaitTimer = setInterval(() => {
                     if (this.floodWait.active && this.floodWait.remaining > 0) {
