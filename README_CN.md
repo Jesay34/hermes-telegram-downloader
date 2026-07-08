@@ -71,6 +71,7 @@
 - **Download throttling** — cumulative FloodWait > 600s = skip file
 - **Message edit throttling** — edit_message FloodWait sets node-level cooldown
 - **User notification** — sends Telegram message when rate-limited
+- **Silent throttle detection** — detects TG silent rate-limiting (speed < 200 KB/s for 120s) without explicit FloodWait error, shows WebUI banner with elapsed timer + sends TG notification (trigger & recovery, once each)
 
 ### WebUI
 
@@ -90,6 +91,7 @@
 - **Completion** — immediate final status (re-counted from _download_result to avoid races)
 - **Failure** — lists each failed file with specific error reason
 - **Rate limit** — FLOOD_WAIT pause notification with wait duration
+- **Silent throttle** — TG silent rate-limit detection (speed < 200 KB/s for 120s), WebUI banner with elapsed timer + TG notification (trigger & recovery, once each)
 - **Recovery** — notifies user when interrupted/pending tasks are restored on restart
 - **Retry** — notifies user when a retried task enters the download queue
 
@@ -427,6 +429,7 @@ Based on [tangyoha/telegram_media_downloader](https://github.com/tangyoha/telegr
 | **WebUI features** | Basic list | 4 tabs + pause/resume + delete + retry + search + infinite scroll |
 | **Pending queue** | None | Restart tasks enter pending, consumed one by one, prevents FLOOD_WAIT storm |
 | **FLOOD_WAIT** | Blocking sleep | Non-blocking cooldown timestamp |
+| **Silent throttle** | Not detected | Speed < 200 KB/s for 120s → WebUI banner + TG notification (trigger & recovery) |
 | **Progress notification** | Timed polling | 20% milestone + immediate completion + re-counted from _download_result |
 | **Failure handling** | Log only | Failed list persisted + error reason + source link + WebUI retry |
 | **Stop task** | Direct stop | Incomplete files recorded as failed (manually stopped) |

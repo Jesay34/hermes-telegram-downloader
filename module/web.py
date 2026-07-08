@@ -119,10 +119,23 @@ def get_download_speed():
 def get_flood_wait():
     """Get unified FloodWait cooldown status for WebUI display."""
     from module.pyrogram_extension import is_flood_wait_active, get_flood_wait_remaining, _unified_flood_wait
+    from module.download_stat import _throttle_state
+    import time as _now
+    now = _now.time()
+    # throttle active 需要同时满足：已通知 + 10秒内有进度回调
+    throttle_active = (
+        _throttle_state["notified"]
+        and (now - _throttle_state["last_active_time"]) < 10
+    )
+    throttle_elapsed = int(now - _throttle_state["since"]) if _throttle_state["since"] > 0 else 0
     return jsonify(
         active=is_flood_wait_active(),
         remaining=int(get_flood_wait_remaining()),
-        reason=_unified_flood_wait.get("reason", "")
+        reason=_unified_flood_wait.get("reason", ""),
+        throttle={
+            "active": throttle_active,
+            "elapsed": throttle_elapsed,
+        }
     )
 
 

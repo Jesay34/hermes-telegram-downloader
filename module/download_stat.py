@@ -9,6 +9,7 @@ from loguru import logger
 from pyrogram import Client
 
 from module.app import TaskNode
+from utils.format import format_byte
 
 
 class DownloadState(Enum):
@@ -28,6 +29,20 @@ _cancelled_tasks: set = set()
 _failed_downloads: list = []
 _chat_titles: dict = {}  # chat_id -> chat_title mapping
 _download_lock: asyncio.Lock = asyncio.Lock()  # 保护 _download_result / _total_download_speed / _failed_downloads 等全局变量的并发访问
+
+# 静默限速检测状态机
+# IDLE(since=0,notified=False) → 速度<阈值 → SLOW_PENDING(since=T,notified=False)
+# SLOW_PENDING → 持续120s → THROTTLED(发TG通知) | 速度恢复 → IDLE(静默)
+# THROTTLED → 速度恢复 → IDLE(发TG解除通知) | 下载完成 → 保持(基数保留给下个任务)
+# 新任务慢且notified=True → 沿用since，不重复发触发通知
+# 新任务速度正常 → 发解除通知，重置IDLE
+_throttle_state: dict = {
+    "since": 0.0,             # 低速开始时间
+    "notified": False,        # 是否已发过限速触发通知
+    "last_active_time": 0.0,  # 最后一次进度回调时间
+}
+_SLOW_THRESHOLD_BPS = 200 * 1024   # 200 KB/s
+_SLOW_SUSTAIN_SEC = 120            # 持续 120 秒触发
 
 # Helper: asyncio.Lock can't be used from sync contexts; provide a try-lock wrapper
 # for sync functions that are also called from async context.
@@ -357,6 +372,55 @@ async def update_download_status(
             }
             _total_download_size += down_byte
             _placeholder_resolved = False
+
+        # === 静默限速检测（锁内只设 flag，锁外发通知）===
+        _throttle_action = None  # None / "notify" / "clear"
+        _throttle_state["last_active_time"] = cur_time
+        dl_entry = _download_result.get(chat_id, {}).get(message_id)
+        if dl_entry:
+            cur_speed = dl_entry.get("download_speed", 0)
+            dl_total = dl_entry.get("total_size", 0)
+            dl_down = dl_entry.get("down_byte", 0)
+            # 只在实际下载中（有进度、未完成）才检测
+            if dl_total > 0 and 0 < dl_down < dl_total:
+                if cur_speed < _SLOW_THRESHOLD_BPS:
+                    # 低速中
+                    if _throttle_state["since"] == 0:
+                        _throttle_state["since"] = cur_time
+                    elif (cur_time - _throttle_state["since"] >= _SLOW_SUSTAIN_SEC
+                          and not _throttle_state["notified"]):
+                        _throttle_state["notified"] = True
+                        _throttle_action = "notify"
+                else:
+                    # 速度恢复正常
+                    if _throttle_state["notified"]:
+                        _throttle_action = "clear"
+                    _throttle_state["since"] = 0
+                    _throttle_state["notified"] = False
+            # 下载完成或未开始：不动状态（保留基数给下个任务）
+
+    # === 静默限速通知（锁外发送，避免 await 阻塞锁）===
+    if _throttle_action == "notify" and node.bot and getattr(node, "from_user_id", ""):
+        try:
+            await node.bot.send_message(
+                int(node.from_user_id),
+                "🐌 TG 下载疑似被限速\n"
+                f"任务: {getattr(node, 'task_id_display', str(node.task_id))}\n"
+                f"文件: {os.path.basename(file_name)}\n"
+                f"速度持续低于 {format_byte(_SLOW_THRESHOLD_BPS)}/s 达 {_SLOW_SUSTAIN_SEC} 秒"
+            )
+        except Exception:
+            pass
+    elif _throttle_action == "clear" and node.bot and getattr(node, "from_user_id", ""):
+        try:
+            await node.bot.send_message(
+                int(node.from_user_id),
+                "✅ TG 限速已解除\n"
+                f"任务: {getattr(node, 'task_id_display', str(node.task_id))}\n"
+                "下载速度恢复正常"
+            )
+        except Exception:
+            pass
 
     # 占位符→真实数据转换时强制刷新 bot 消息（避免卡在"获取文件信息中..."）
     if _placeholder_resolved and node.bot:
