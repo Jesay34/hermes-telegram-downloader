@@ -1208,12 +1208,34 @@
                 }
             },
 
-            toggleSelectAll(tab) {
+            async toggleSelectAll(tab) {
                 let tasks;
                 if (tab === 'active') tasks = this.activeTasks;
                 else if (tab === 'pending') tasks = this.pendingTasks;
                 else if (tab === 'completed') tasks = this.completedTasks;
                 else tasks = this.failedTasks;
+
+                // For completed tab: if there are more pages not yet loaded, load all first
+                if (tab === 'completed' && this.completedHasMore && this.completedTotal > this.completedTasks.length) {
+                    while (this.completedHasMore) {
+                        try {
+                            const searchParam = this.completedSearch ? `&search=${encodeURIComponent(this.completedSearch)}` : '';
+                            const res = await fetch(`/get_download_list?already_down=true&offset=${this.completedOffset}&limit=${this.completedLimit}${searchParam}`);
+                            const data = await res.json();
+                            const newTasks = data.tasks || [];
+                            this.completedTasks.push(...newTasks);
+                            this.completedOffset += newTasks.length;
+                            this.completedTotal = data.total || this.completedTasks.length;
+                            if (newTasks.length < this.completedLimit) {
+                                this.completedHasMore = false;
+                            }
+                            if (newTasks.length === 0) break;
+                        } catch(e) {
+                            break;
+                        }
+                    }
+                    tasks = this.completedTasks;
+                }
 
                 const allIds = tasks.map(t => t.task_id);
                 if (this.selectedTasks.length === allIds.length) {
