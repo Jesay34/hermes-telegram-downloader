@@ -122,12 +122,9 @@ def get_flood_wait():
     from module.download_stat import _throttle_state
     import time as _now
     now = _now.time()
-    # throttle active 需要同时满足：已通知 + 60秒内有进度回调
-    # （限速时回调间隔可能很长，10秒太短会导致横幅闪烁）
-    throttle_active = (
-        _throttle_state["notified"]
-        and (now - _throttle_state["last_active_time"]) < 60
-    )
+    # throttle active 直接看 notified — 只要没解除限速就一直显示
+    # docker 重启后 _throttle_state 重置为默认值，自动清除
+    throttle_active = _throttle_state["notified"]
     throttle_elapsed = int(now - _throttle_state["since"]) if _throttle_state["since"] > 0 else 0
     return jsonify(
         active=is_flood_wait_active(),
