@@ -848,6 +848,14 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
             extra_data={"task_id_display": node.task_id_display, "message_id": msg_id},
         )
 
+        # Clean up the placeholder entry created by batch_retry
+        if placeholder_task_id:
+            try:
+                from module.task_store import remove_task as _remove_placeholder
+                _remove_placeholder(placeholder_task_id)
+            except Exception:
+                pass
+
         # Cache message and trigger consumer — same flow as direct_download
         _bot._cached_messages[node.task_id] = msg
         node.is_running = True
