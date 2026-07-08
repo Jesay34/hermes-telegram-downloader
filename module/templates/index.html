@@ -1384,8 +1384,18 @@
                             }
                             this.showToast(msg, 'success');
                             this.selectedTasks = [];
-                            this.fetchActive().catch(() => {});
-                            this.fetchCompleted().catch(() => {});
+                            // Remove deleted tasks from all local arrays immediately
+                            const deleteIds = new Set(dm.taskIds);
+                            this.completedTasks = this.completedTasks.filter(t => !deleteIds.has(t.task_id));
+                            this.activeTasks = this.activeTasks.filter(t => !deleteIds.has(t.task_id));
+                            this.pendingTasks = this.pendingTasks.filter(t => !deleteIds.has(t.task_id));
+                            this.failedTasks = this.failedTasks.filter(t => !deleteIds.has(t.task_id));
+                            this.completedOffset = this.completedTasks.length;
+                            // Update total count from server
+                            fetch('/get_completed_count').then(r => r.json()).then(d => {
+                                this.completedTotal = d.total;
+                                this.completedLastTotal = this.completedTotal;
+                            }).catch(() => {});
                         } else {
                             this.showToast(data.message || '删除失败', 'error');
                         }
@@ -1431,8 +1441,16 @@
                     const data = await res.json();
                     if (data.code === '1') {
                         this.showToast('任务已删除', 'success');
-                        this.fetchActive().catch(() => {});
-                        this.fetchCompleted().catch(() => {});
+                        // Remove from local arrays immediately
+                        this.completedTasks = this.completedTasks.filter(t => t.task_id !== taskId);
+                        this.activeTasks = this.activeTasks.filter(t => t.task_id !== taskId);
+                        this.pendingTasks = this.pendingTasks.filter(t => t.task_id !== taskId);
+                        this.failedTasks = this.failedTasks.filter(t => t.task_id !== taskId);
+                        this.completedOffset = this.completedTasks.length;
+                        fetch('/get_completed_count').then(r => r.json()).then(d => {
+                            this.completedTotal = d.total;
+                            this.completedLastTotal = this.completedTotal;
+                        }).catch(() => {});
                     } else {
                         this.showToast(data.message || '删除失败', 'error');
                     }
