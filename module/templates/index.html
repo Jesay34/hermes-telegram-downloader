@@ -1386,11 +1386,28 @@
                             this.selectedTasks = [];
                             // Remove deleted tasks from all local arrays immediately
                             const deleteIds = new Set(dm.taskIds);
+                            const deletedCount = dm.taskIds.length;
                             this.completedTasks = this.completedTasks.filter(t => !deleteIds.has(t.task_id));
                             this.activeTasks = this.activeTasks.filter(t => !deleteIds.has(t.task_id));
                             this.pendingTasks = this.pendingTasks.filter(t => !deleteIds.has(t.task_id));
                             this.failedTasks = this.failedTasks.filter(t => !deleteIds.has(t.task_id));
-                            this.completedOffset = this.completedTasks.length;
+                            // Reload equivalent number of new items (cap 100)
+                            const reloadLimit = Math.min(deletedCount, 100);
+                            if (this.completedHasMore && reloadLimit > 0) {
+                                const searchParam = this.completedSearch ? `&search=${encodeURIComponent(this.completedSearch)}` : '';
+                                fetch(`/get_download_list?already_down=true&offset=${this.completedTasks.length}&limit=${reloadLimit}${searchParam}`)
+                                    .then(r => r.json()).then(d => {
+                                        const tasks = d.tasks || d;
+                                        const existingIds = new Set(this.completedTasks.map(t => t.task_id));
+                                        const fresh = tasks.filter(t => t.download_progress_raw >= 100 && !existingIds.has(t.task_id));
+                                        this.completedTasks = [...this.completedTasks, ...fresh];
+                                        this.completedOffset = this.completedTasks.length;
+                                        this.completedTotal = d.total || this.completedTotal;
+                                        this.completedLastTotal = this.completedTotal;
+                                    }).catch(() => {});
+                            } else {
+                                this.completedOffset = this.completedTasks.length;
+                            }
                             // Update total count from server
                             fetch('/get_completed_count').then(r => r.json()).then(d => {
                                 this.completedTotal = d.total;
@@ -1417,8 +1434,31 @@
                                 msg = '任务已删除（文件: ' + data.file_error + '）';
                             }
                             this.showToast(msg, 'success');
-                            this.fetchActive().catch(() => {});
-                            this.fetchCompleted().catch(() => {});
+                            // Remove from local arrays and reload 1 item
+                            const tid = dm.taskIds[0];
+                            this.completedTasks = this.completedTasks.filter(t => t.task_id !== tid);
+                            this.activeTasks = this.activeTasks.filter(t => t.task_id !== tid);
+                            this.pendingTasks = this.pendingTasks.filter(t => t.task_id !== tid);
+                            this.failedTasks = this.failedTasks.filter(t => t.task_id !== tid);
+                            if (this.completedHasMore) {
+                                const searchParam = this.completedSearch ? `&search=${encodeURIComponent(this.completedSearch)}` : '';
+                                fetch(`/get_download_list?already_down=true&offset=${this.completedTasks.length}&limit=1${searchParam}`)
+                                    .then(r => r.json()).then(d => {
+                                        const tasks = d.tasks || d;
+                                        const existingIds = new Set(this.completedTasks.map(t => t.task_id));
+                                        const fresh = tasks.filter(t => t.download_progress_raw >= 100 && !existingIds.has(t.task_id));
+                                        this.completedTasks = [...this.completedTasks, ...fresh];
+                                        this.completedOffset = this.completedTasks.length;
+                                        this.completedTotal = d.total || this.completedTotal;
+                                        this.completedLastTotal = this.completedTotal;
+                                    }).catch(() => {});
+                            } else {
+                                this.completedOffset = this.completedTasks.length;
+                            }
+                            fetch('/get_completed_count').then(r => r.json()).then(d => {
+                                this.completedTotal = d.total;
+                                this.completedLastTotal = this.completedTotal;
+                            }).catch(() => {});
                         } else {
                             this.showToast(data.message || '删除失败', 'error');
                         }
@@ -1446,7 +1486,22 @@
                         this.activeTasks = this.activeTasks.filter(t => t.task_id !== taskId);
                         this.pendingTasks = this.pendingTasks.filter(t => t.task_id !== taskId);
                         this.failedTasks = this.failedTasks.filter(t => t.task_id !== taskId);
-                        this.completedOffset = this.completedTasks.length;
+                        // Reload 1 new item to fill the gap
+                        if (this.completedHasMore) {
+                            const searchParam = this.completedSearch ? `&search=${encodeURIComponent(this.completedSearch)}` : '';
+                            fetch(`/get_download_list?already_down=true&offset=${this.completedTasks.length}&limit=1${searchParam}`)
+                                .then(r => r.json()).then(d => {
+                                    const tasks = d.tasks || d;
+                                    const existingIds = new Set(this.completedTasks.map(t => t.task_id));
+                                    const fresh = tasks.filter(t => t.download_progress_raw >= 100 && !existingIds.has(t.task_id));
+                                    this.completedTasks = [...this.completedTasks, ...fresh];
+                                    this.completedOffset = this.completedTasks.length;
+                                    this.completedTotal = d.total || this.completedTotal;
+                                    this.completedLastTotal = this.completedTotal;
+                                }).catch(() => {});
+                        } else {
+                            this.completedOffset = this.completedTasks.length;
+                        }
                         fetch('/get_completed_count').then(r => r.json()).then(d => {
                             this.completedTotal = d.total;
                             this.completedLastTotal = this.completedTotal;

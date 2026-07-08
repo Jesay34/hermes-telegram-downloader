@@ -40,9 +40,11 @@ _throttle_state: dict = {
     "since": 0.0,             # 低速开始时间
     "notified": False,        # 是否已发过限速触发通知
     "last_active_time": 0.0,  # 最后一次进度回调时间
+    "recovery_since": 0.0,    # 速度恢复开始时间（用于解除判定）
 }
 _SLOW_THRESHOLD_BPS = 200 * 1024   # 200 KB/s
 _SLOW_SUSTAIN_SEC = 120            # 持续 120 秒触发
+_SLOW_CLEAR_SUSTAIN_SEC = 15       # 速度恢复持续 15 秒才解除
 
 # Helper: asyncio.Lock can't be used from sync contexts; provide a try-lock wrapper
 # for sync functions that are also called from async context.
@@ -384,7 +386,8 @@ async def update_download_status(
             # 只在实际下载中（有进度、未完成）才检测
             if dl_total > 0 and 0 < dl_down < dl_total:
                 if cur_speed < _SLOW_THRESHOLD_BPS:
-                    # 低速中
+                    # 低速中 — 重置恢复计时
+                    _throttle_state["recovery_since"] = 0.0
                     if _throttle_state["since"] == 0:
                         _throttle_state["since"] = cur_time
                     elif (cur_time - _throttle_state["since"] >= _SLOW_SUSTAIN_SEC
@@ -392,11 +395,20 @@ async def update_download_status(
                         _throttle_state["notified"] = True
                         _throttle_action = "notify"
                 else:
-                    # 速度恢复正常
+                    # 速度恢复 — 需持续 15 秒才解除
                     if _throttle_state["notified"]:
-                        _throttle_action = "clear"
-                    _throttle_state["since"] = 0
-                    _throttle_state["notified"] = False
+                        if _throttle_state["recovery_since"] == 0:
+                            _throttle_state["recovery_since"] = cur_time
+                        elif cur_time - _throttle_state["recovery_since"] >= _SLOW_CLEAR_SUSTAIN_SEC:
+                            _throttle_action = "clear"
+                            _throttle_state["since"] = 0
+                            _throttle_state["notified"] = False
+                            _throttle_state["recovery_since"] = 0.0
+                    else:
+                        # 未触发过限速，速度正常，静默重置
+                        _throttle_state["since"] = 0
+                        _throttle_state["notified"] = False
+                        _throttle_state["recovery_since"] = 0.0
             # 下载完成或未开始：不动状态（保留基数给下个任务）
 
     # === 静默限速通知（锁外发送，避免 await 阻塞锁）===
