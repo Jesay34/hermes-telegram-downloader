@@ -310,7 +310,7 @@
                                 <h4 class="text-sm font-medium text-gray-900 sm:truncate line-clamp-2" :title="task.filename" x-text="task.filename"></h4>
                                 <div class="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
                                     <template x-if="task.phase !== 'fetching'">
-                                        <template>
+                                        <span>
                                             <span x-text="task.total_size"></span>
                                             <span class="text-gray-300">|</span>
                                             <span class="font-mono font-medium"
@@ -320,7 +320,7 @@
                                                       'text-gray-400': task.status === 'waiting'
                                                   }"
                                                   x-text="task.download_speed"></span>
-                                        </template>
+                                        </span>
                                     </template>
                                     <template x-if="task.eta && task.phase !== 'fetching'">
                                         <span>
