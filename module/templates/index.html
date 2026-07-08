@@ -991,12 +991,8 @@
                         this.floodWait.remaining = Math.max(0, this.floodWait.remaining - 1);
                     }
                 }, 1000);
-                // Throttle elapsed ticker (updates every second for smooth counting)
-                this.throttleTimer = setInterval(() => {
-                    if (this.throttle.active) {
-                        this.throttle.elapsed = Math.max(0, this.throttle.elapsed + 1);
-                    }
-                }, 1000);
+                // Throttle elapsed: no local ticker, rely on server value
+                // (poll runs every 1.5s, server returns accurate elapsed)
                 // Pending list refreshes every 5 seconds
                 this.pendingPollTimer = setInterval(() => {
                     this.fetchPending();
