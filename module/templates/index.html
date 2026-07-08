@@ -871,28 +871,10 @@
                     <p class="text-sm text-gray-600">
                         确定要删除选中的 <span class="font-semibold" x-text="deleteModal.batchCount"></span> 个任务吗？删除后无法恢复。
                     </p>
-                    <template x-if="deleteModal.loading">
-                        <div class="flex items-center gap-2 text-sm text-gray-400">
-                            <svg class="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                            </svg>
-                            正在检查文件...
-                        </div>
-                    </template>
-                    <template x-if="!deleteModal.loading">
-                        <div class="space-y-2">
-                            <div class="flex items-center gap-4 text-sm">
-                                <span class="text-green-600">文件存在: <span class="font-semibold" x-text="deleteModal.batchFilesExist"></span></span>
-                                <span class="text-gray-400">文件不存在: <span class="font-semibold" x-text="deleteModal.batchFilesNotFound"></span></span>
-                            </div>
-                            <template x-if="deleteModal.batchFilesExist > 0">
-                                <label class="flex items-center gap-2 cursor-pointer bg-amber-50 border border-amber-200 rounded-lg p-3">
-                                    <input type="checkbox" x-model="deleteModal.deleteFile" class="w-4 h-4 rounded border-amber-300 text-red-600 focus:ring-red-500">
-                                    <span class="text-sm text-amber-800">同时删除存在的本地文件</span>
-                                </label>
-                            </template>
-                        </div>
-                    </template>
+                    <label class="flex items-center gap-2 cursor-pointer bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <input type="checkbox" x-model="deleteModal.deleteFile" class="w-4 h-4 rounded border-amber-300 text-red-600 focus:ring-red-500">
+                        <span class="text-sm text-amber-800">同时删除本地文件</span>
+                    </label>
                 </div>
             </template>
 
@@ -1362,7 +1344,7 @@
                 const taskIds = [...this.selectedTasks];
                 this.deleteModal = {
                     show: true,
-                    loading: true,
+                    loading: false,
                     isBatch: true,
                     taskIds: taskIds,
                     fileExists: false,
@@ -1373,26 +1355,6 @@
                     batchFilesExist: 0,
                     batchFilesNotFound: 0,
                 };
-                // Check each task's file existence
-                let existCount = 0;
-                let notFoundCount = 0;
-                for (const tid of taskIds) {
-                    try {
-                        const res = await fetch('/check_file_exists?task_id=' + encodeURIComponent(tid), { method: 'POST' });
-                        const data = await res.json();
-                        if (data.code === '1' && data.exists) {
-                            existCount++;
-                        } else {
-                            notFoundCount++;
-                        }
-                    } catch(e) {
-                        notFoundCount++;
-                    }
-                }
-                this.deleteModal.batchFilesExist = existCount;
-                this.deleteModal.batchFilesNotFound = notFoundCount;
-                this.deleteModal.deleteFile = existCount > 0;
-                this.deleteModal.loading = false;
             },
 
             async executeDelete() {
@@ -1410,8 +1372,12 @@
                         const data = await res.json();
                         if (data.code === '1') {
                             let msg = '已删除 ' + data.deleted + ' 个任务';
-                            if (dm.deleteFile && data.files_deleted > 0) {
-                                msg += '（' + data.files_deleted + ' 个文件已删除）';
+                            if (dm.deleteFile) {
+                                msg += '（文件: 成功删除 ' + data.files_deleted + ' 个';
+                                if (data.files_not_found > 0) {
+                                    msg += ', 不存在 ' + data.files_not_found + ' 个';
+                                }
+                                msg += '）';
                             }
                             this.showToast(msg, 'success');
                             this.selectedTasks = [];
