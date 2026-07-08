@@ -430,6 +430,7 @@ git pull && docker-compose build && docker-compose up -d
 | **Pending 队列** | 无 | 重启任务统一入 pending，逐个消费，防 FLOOD_WAIT 风暴 |
 | **FLOOD_WAIT** | 阻塞 sleep | 非阻塞冷却时间戳，不卡死队列 |
 | **静默限速** | 不检测 | 速度 < 200 KB/s 持续 120 秒 → WebUI 横幅 + TG 通知（触发和解除各一次） |
+| **并发任务数** | 固定（config） | WebUI 下拉框动态调整 1-6，实时生效 |
 | **进度通知** | 定时轮询 | 20% 里程碑触发 + 完成立即通知 + 从 _download_result 重计数 |
 | **失败处理** | 仅日志 | 失败列表持久化 + 错误原因 + 源链接 + WebUI 重试 |
 | **停止任务** | 直接停止 | 未完成文件记入失败列表（手动终止），不留残留 |

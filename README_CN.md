@@ -430,6 +430,7 @@ Based on [tangyoha/telegram_media_downloader](https://github.com/tangyoha/telegr
 | **Pending queue** | None | Restart tasks enter pending, consumed one by one, prevents FLOOD_WAIT storm |
 | **FLOOD_WAIT** | Blocking sleep | Non-blocking cooldown timestamp |
 | **Silent throttle** | Not detected | Speed < 200 KB/s for 120s → WebUI banner + TG notification (trigger & recovery) |
+| **Worker count** | Fixed (config) | WebUI dropdown 1-6, dynamically adjusts concurrency |
 | **Progress notification** | Timed polling | 20% milestone + immediate completion + re-counted from _download_result |
 | **Failure handling** | Log only | Failed list persisted + error reason + source link + WebUI retry |
 | **Stop task** | Direct stop | Incomplete files recorded as failed (manually stopped) |

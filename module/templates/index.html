@@ -195,43 +195,43 @@
         <!-- Active Downloads Tab -->
         <div x-show="activeTab === 'active'" x-transition:enter="fade-in">
             <!-- Slow Throttle Banner (静默限速) -->
-            <div x-show="throttle.active" x-transition class="mb-4 rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 shadow-sm">
-                <div class="flex items-center gap-3">
+            <div x-show="throttle.active" x-transition class="mb-4 rounded-xl border border-orange-300 bg-orange-50 px-3 sm:px-4 py-2.5 sm:py-3 shadow-sm">
+                <div class="flex items-center gap-2 sm:gap-3">
                     <div class="relative shrink-0">
-                        <svg class="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-6 h-6 sm:w-8 sm:h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                         </svg>
-                        <span class="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5 sm:h-3 sm:w-3">
                             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 sm:h-3 sm:w-3 bg-orange-500"></span>
                         </span>
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="text-sm font-semibold text-orange-800">TG 静默限速中</span>
-                            <span class="text-2xl font-bold text-orange-900 font-mono tabular-nums" x-text="throttleFormat(throttle.elapsed)"></span>
+                            <span class="text-xs sm:text-sm font-semibold text-orange-800">TG 静默限速中</span>
+                            <span class="text-lg sm:text-2xl font-bold text-orange-900 font-mono tabular-nums" x-text="throttleFormat(throttle.elapsed)"></span>
                         </div>
-                        <p class="text-xs text-orange-600 mt-0.5">下载速度持续低于 200 KB/s，已被 Telegram 限制</p>
+                        <p class="text-xs text-orange-600 mt-0.5 truncate sm:whitespace-normal">下载速度持续低于 200 KB/s，已被 Telegram 限制</p>
                     </div>
                 </div>
             </div>
             <!-- FloodWait Banner -->
-            <div x-show="floodWait.active && floodWait.remaining > 0" x-transition class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm">
-                <div class="flex items-center gap-3">
+            <div x-show="floodWait.active && floodWait.remaining > 0" x-transition class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 sm:px-4 py-2.5 sm:py-3 shadow-sm">
+                <div class="flex items-center gap-2 sm:gap-3">
                     <!-- Pulsing clock icon -->
                     <div class="relative shrink-0">
-                        <svg class="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-6 h-6 sm:w-8 sm:h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
-                        <span class="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5 sm:h-3 sm:w-3">
                             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 sm:h-3 sm:w-3 bg-amber-500"></span>
                         </span>
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="text-sm font-semibold text-amber-800">TG 限速等待中</span>
-                            <span class="text-2xl font-bold text-amber-900 font-mono tabular-nums" x-text="floodWaitFormat(floodWait.remaining)"></span>
+                            <span class="text-xs sm:text-sm font-semibold text-amber-800">TG 限速等待中</span>
+                            <span class="text-lg sm:text-2xl font-bold text-amber-900 font-mono tabular-nums" x-text="floodWaitFormat(floodWait.remaining)"></span>
                         </div>
                         <p class="text-xs text-amber-600 mt-0.5 truncate" x-text="floodWait.reason || 'Telegram API 频率限制，正在等待恢复'"></p>
                     </div>
@@ -243,6 +243,33 @@
                         </div>
                         <p class="text-xs text-amber-500 mt-1 text-center">自动恢复</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- Max Workers Control Bar -->
+            <div class="mb-3 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <label class="text-sm text-gray-500 flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"/>
+                        </svg>
+                        <span class="hidden sm:inline">并发任务数</span>
+                        <span class="sm:hidden">并发</span>
+                    </label>
+                    <select
+                        x-model.number="maxWorkers"
+                        @change="saveMaxWorkers()"
+                        :disabled="savingWorkers"
+                        class="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    >
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                    <span x-show="savingWorkers" class="text-xs text-blue-500">保存中...</span>
                 </div>
             </div>
 
@@ -905,6 +932,8 @@
             isDownloading: true,
             floodWait: { active: false, remaining: 0, reason: '' },
             throttle: { active: false, elapsed: 0 },
+            maxWorkers: 5,
+            savingWorkers: false,
             activeTasks: [],
             completedTasks: [],
             completedTotal: 0,
@@ -950,6 +979,7 @@
                 await this.fetchActive();
                 await this.fetchPending();
                 await this.fetchCompleted(true);
+                await this.fetchMaxWorkers();
                 this.pollTimer = setInterval(() => {
                     this.fetchDownloadStatus();
                     this.fetchFloodWait();
@@ -1096,6 +1126,28 @@
                         }
                     }
                 } catch(e) {}
+            },
+
+            async fetchMaxWorkers() {
+                try {
+                    const res = await fetch('/get_max_workers');
+                    const data = await res.json();
+                    if (data.max_workers) {
+                        this.maxWorkers = data.max_workers;
+                    }
+                } catch(e) {}
+            },
+
+            async saveMaxWorkers() {
+                this.savingWorkers = true;
+                try {
+                    await fetch(`/set_max_workers?n=${this.maxWorkers}`, { method: 'POST' });
+                    this.showToast('并发任务数已设置为 ' + this.maxWorkers, 'success');
+                } catch(e) {
+                    this.showToast('设置失败', 'error');
+                } finally {
+                    this.savingWorkers = false;
+                }
             },
 
             async fetchDownloadState() {

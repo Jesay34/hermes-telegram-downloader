@@ -167,6 +167,32 @@ def get_app_version():
     return utils.__version__
 
 
+@_flask_app.route("/get_max_workers")
+def get_max_workers():
+    """Get current max download task count"""
+    return jsonify(max_workers=_app.max_download_task)
+
+
+@_flask_app.route("/set_max_workers", methods=["POST"])
+def set_max_workers():
+    """Set max download task count (1-6, affects consumer concurrency guard)"""
+    n = request.args.get("n", type=int)
+    if n is None or n < 1 or n > 6:
+        return jsonify(error="n must be 1-6"), 400
+    _app.max_download_task = n
+    # max_concurrent_transmissions follows max_download_task * 5
+    _app.max_concurrent_transmissions = n * 5
+    # Apply to pyrogram client if available
+    from module.pyrogram_extension import set_max_concurrent_transmissions
+    try:
+        from module.bot import _bot
+        if _bot and _bot.client:
+            set_max_concurrent_transmissions(_bot.client, n * 5)
+    except Exception:
+        pass
+    return jsonify(max_workers=n)
+
+
 @_flask_app.route("/get_download_list")
 def get_download_list():
     """Get download list with task_id and status"""

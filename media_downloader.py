@@ -914,7 +914,10 @@ def main():
         queue = asyncio.Queue()
         logger.success(_t("Successfully started (Press Ctrl+C to stop)"))
         app.loop.create_task(download_all_chat(client))
-        for _ in range(app.max_download_task):
+        # Always start 6 workers (max). Consumer guards actual concurrency
+        # via app.max_download_task. Idle workers block on queue.get() — zero cost.
+        _MAX_WORKERS = 6
+        for _ in range(_MAX_WORKERS):
             tasks.append(app.loop.create_task(worker(client)))
         if app.bot_token:
             app.loop.run_until_complete(start_download_bot(app, client, add_download_task, download_chat_task))
