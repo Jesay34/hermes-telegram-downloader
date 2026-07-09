@@ -2104,24 +2104,20 @@ async def _consume_one_pending():
 async def _pending_consumer_loop():
     """Periodically fill the worker queue with pending tasks.
 
-    Runs every 5s (not 60s) to keep the 5-worker queue full at all times.
-    Each tick consumes up to max_download_task pending tasks so workers
-    never starve waiting for the consumer.
+    Runs every 2s. Each tick consumes ONE pending task — the concurrency
+    guard inside _consume_one_pending checks downloading + in_queue + consuming
+    >= max_download_task and returns early if all slots are full.
+    This prevents over-filling when get_messages is fast (cached messages).
     """
     import logging
     logger = logging.getLogger("bot.pending_loop")
     while True:
         try:
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
             from module.task_store import get_pending_tasks
             pending = get_pending_tasks()
             if pending:
-                max_fill = getattr(_bot.app, 'max_download_task', 5)
-                # Fill up to max_download_task items per tick to keep
-                # all workers busy
-                for _ in range(min(len(pending), max_fill)):
-                    await _consume_one_pending()
-                    await asyncio.sleep(0.3)  # small delay between get_messages calls
+                await _consume_one_pending()
         except asyncio.CancelledError:
             break
         except Exception as e:
