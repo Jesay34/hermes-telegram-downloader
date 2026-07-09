@@ -1336,8 +1336,9 @@ async def direct_download(
     _bot._cached_messages[node.task_id] = download_message
     node.is_running = True
 
-    # Trigger consumer to check if a worker slot is available
-    _bot.app.loop.create_task(_consume_one_pending())
+    # Do NOT trigger _consume_one_pending directly — let the periodic
+    # _pending_consumer_loop (every 2s) pick it up. This ensures the
+    # concurrency guard is always respected.
 
 
 async def download_forward_media(

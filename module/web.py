@@ -876,10 +876,10 @@ async def _async_retry_download(chat_id, msg_id, from_user_id="", placeholder_ta
 
         logger.info(f"Retry: queued message {msg_id} from chat {cid} as task {node.task_id_display}")
 
-        # Trigger consumer to check if a worker slot is available
-        from module.bot import _consume_one_pending
-        import asyncio as _asyncio
-        _bot.app.loop.create_task(_consume_one_pending())
+        # Do NOT trigger _consume_one_pending directly — let the periodic
+        # _pending_consumer_loop (every 2s) pick it up. This ensures the
+        # concurrency guard is always respected, preventing over-fill when
+        # many retries are submitted simultaneously.
     except Exception as e:
         logger.error(f"Retry failed for chat={chat_id} msg={msg_id}: {e}", exc_info=True)
         _restore_failed(f"重试失败: {e}")
