@@ -190,6 +190,8 @@ def set_max_workers():
             set_max_concurrent_transmissions(_bot.client, n * 5)
     except Exception:
         pass
+    # Persist to config file
+    _app.update_config(True)
     return jsonify(max_workers=n)
 
 
