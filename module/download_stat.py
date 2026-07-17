@@ -333,8 +333,14 @@ async def update_download_status(
 
             download_speed = max(download_speed, 0)
 
+            # Compute progress here (under lock) so Flask thread only reads
+            # a single atomic value instead of dividing down_byte/total_size
+            # which can tear across the two dict writes below.
+            _progress = round(down_byte / total_size * 100, 1) if total_size > 0 else 0
+
             _download_result[chat_id][message_id]["down_byte"] = down_byte
             _download_result[chat_id][message_id]["total_size"] = total_size
+            _download_result[chat_id][message_id]["progress"] = _progress
             _download_result[chat_id][message_id]["file_name"] = file_name
             _download_result[chat_id][message_id]["end_time"] = end_time
             _download_result[chat_id][message_id]["download_speed"] = download_speed
@@ -358,9 +364,11 @@ async def update_download_status(
                 save_downloads()
         else:
             each_second_total_download = down_byte
+            _progress = round(down_byte / total_size * 100, 1) if total_size > 0 else 0
             _download_result[chat_id][message_id] = {
                 "down_byte": down_byte,
                 "total_size": total_size,
+                "progress": _progress,
                 "file_name": file_name,
                 "start_time": start_time,
                 "end_time": cur_time,

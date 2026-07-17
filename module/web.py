@@ -228,7 +228,9 @@ def get_download_list():
                 if value.get("total_size", 0) == 0 and value.get("down_byte", 0) == 0:
                     continue
 
-            progress = round(value["down_byte"] / value["total_size"] * 100, 1) if value["total_size"] > 0 else 0
+            progress = value.get("progress", 0)
+            if not progress and value["total_size"] > 0:
+                progress = round(value["down_byte"] / value["total_size"] * 100, 1)
 
             # Staleness check: if speed hasn't been updated in 3s (no Pyrogram callback), show 0
             import time as _now

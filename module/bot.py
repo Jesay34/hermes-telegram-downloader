@@ -458,12 +458,14 @@ class DownloadBot:
         async def _on_new_message(client, message):
             chat_id = message.chat.id
             if not message.media:
+                logger.debug(f"NewMessage handler: msg {message.id} from chat {chat_id} has no media, skipping")
                 return
-            
+
             # 检查是否是 listen_forward_chat 中的频道
             if chat_id in self.listen_forward_chat:
                 node = self.listen_forward_chat[chat_id]
                 if not node.is_running:
+                    logger.debug(f"NewMessage handler: msg {message.id} from chat {chat_id} matches listen_forward but node not running")
                     return
                 try:
                     if not node.has_protected_content:
@@ -475,14 +477,15 @@ class DownloadBot:
                 except Exception as e:
                     logger.exception(f"Listen handler error for chat {chat_id}: {e}")
                 return
-            
+
             # 检查是否是 config.yaml 中配置的 chat
             if self.app and chat_id in self.app.chat_download_config:
                 chat_config = self.app.chat_download_config[chat_id]
                 # 只处理比 last_read_message_id 新的消息
                 if message.id <= chat_config.last_read_message_id:
+                    logger.debug(f"NewMessage handler: msg {message.id} from config chat {chat_id} <= last_read {chat_config.last_read_message_id}, skipping")
                     return
-                
+
                 # 创建临时 TaskNode 下载这条消息
                 try:
                     from module.app import TaskNode
@@ -494,17 +497,20 @@ class DownloadBot:
                         download_filter=chat_config.download_filter,
                     )
                     node.task_id_display = f"config-{chat_id}-{message.id}"
-                    
+
                     # 不更新 last_read_message_id — 实时监控只负责下载，
                     # 扫描位置由 download_chat_task 管理。这样下载失败时
                     # 重启扫描能重新覆盖这些消息（_is_exist 检查防止重复下载）。
-                    
+
                     # 加入下载队列
                     await self.add_download_task(message, node)
                     logger.info(f"Config chat {chat_id}: new message {message.id} queued for download")
                 except Exception as e:
                     logger.exception(f"Config chat handler error for chat {chat_id}: {e}")
                 return
+
+            # 消息不属于任何已配置的频道
+            logger.debug(f"NewMessage handler: msg {message.id} from chat {chat_id} not in any configured channel (listen_forward={list(self.listen_forward_chat.keys())}, config_chats={list(self.app.chat_download_config.keys()) if self.app else []})")
 
         handler = MessageHandler(
             _on_new_message,
@@ -2063,6 +2069,7 @@ async def _consume_one_pending():
             _download_result[cid][int(msg_id)] = {
                 "down_byte": 0,
                 "total_size": 1,  # Non-zero so web.py doesn't hide this entry
+                "progress": 0,
                 "file_name": "获取文件信息中...",
                 "start_time": time.time(),
                 "end_time": 0,
@@ -2097,6 +2104,10 @@ async def _consume_one_pending():
                 logger.warning(f"Pending consumer notification failed: {e}")
 
         await add_download_task(msg, node)
+        # Mark as downloading so concurrency guard counts this task.
+        # Without this, get_downloading_tasks() can't see it, and the
+        # guard keeps feeding new tasks beyond max_download_task.
+        update_download_state(task_id, "downloading")
         logger.info(f"Pending consumer: queued task {task_id} (msg {msg_id}) to download queue")
     except Exception as e:
         logger.warning(f"Pending consumer error: {e}")
