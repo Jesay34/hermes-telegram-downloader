@@ -1143,7 +1143,23 @@
                 try {
                     const res = await fetch('/get_download_list?already_down=false');
                     const data = await res.json();
-                    this.activeTasks = data.filter(t => t.download_progress_raw < 100);
+                    const newTasks = data.filter(t => t.download_progress_raw < 100);
+                    // Smart merge: update existing tasks in-place instead of replacing
+                    // the entire array. Alpine's Proxy reactivity only re-renders DOM
+                    // elements whose bound values actually changed (speed, ETA, progress),
+                    // not static elements (filename, chat_title, buttons, etc.)
+                    const newMap = {};
+                    newTasks.forEach(t => { newMap[t.task_id] = t; });
+                    for (let i = this.activeTasks.length - 1; i >= 0; i--) {
+                        const t = this.activeTasks[i];
+                        if (newMap[t.task_id]) {
+                            Object.assign(t, newMap[t.task_id]);
+                            delete newMap[t.task_id];
+                        } else {
+                            this.activeTasks.splice(i, 1);
+                        }
+                    }
+                    Object.values(newMap).forEach(t => this.activeTasks.push(t));
                 } catch(e) {}
             },
 
